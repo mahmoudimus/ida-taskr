@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ida-taskr"
+version = "0.1.0"
+description = "IDA task runner"
+
+[project.scripts]
+ida-taskr = "ida_taskr:main"
+
+[tool.test.run]
+branch = true
+include = ["tests/*"]
+command_line = "-m unittest discover -s tests/"
