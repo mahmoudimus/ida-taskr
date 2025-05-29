@@ -13,6 +13,7 @@ import multiprocessing.shared_memory
 import pathlib
 import time
 import typing
+from abc import ABC, abstractmethod
 from bisect import bisect_left, bisect_right
 from typing import Any, Callable, Generic, TypeVar, overload
 
@@ -274,16 +275,20 @@ class EventEmitter:
         self._listeners[event].discard(handler)
 
     def emit(self, event, *args, **kwargs):
-        for handler in self._listeners[event]:
+        for handler in list(self._listeners[event]):
             handler(*args, **kwargs)
 
 
 @dataclasses.dataclass
-class AsyncEventEmitter:
+class AsyncEventEmitter(ABC):
     def __post_init__(self):
         self._listeners = collections.defaultdict(set)
+        self.pause_evt = asyncio.Event()
+        self.stop_evt = asyncio.Event()
+        self.logger = get_logger(self.__class__.__name__)
 
     def on(self, event, handler=None):
+        """Register an event handler for the given event."""
         if handler:
             self._listeners[event].add(handler)
             return handler
@@ -295,11 +300,30 @@ class AsyncEventEmitter:
 
         return decorator
 
+    def once(self, event, handler):
+        @functools.wraps(handler)
+        def once_handler(*args, **kwargs):
+            self.remove(event, once_handler)
+            return handler(*args, **kwargs)
+
+        self.on(event, once_handler)
+
+    def remove(self, event, handler):
+        self._listeners[event].discard(handler)
+
     async def emit(self, event, *args):
-        for h in self._listeners.get(event, []):
-            res = h(*args)
-            if asyncio.iscoroutine(res):
-                await res
+        for handler in list(self._listeners[event]):
+            await handler(*args)
+
+    @abstractmethod
+    async def run(self):
+        """Core asynchronous task execution logic."""
+        pass
+
+    @abstractmethod
+    async def shutdown(self):
+        """Cleanup resources for the async task."""
+        pass
 
 
 def log_execution_time(func, loglvl=logging.INFO):

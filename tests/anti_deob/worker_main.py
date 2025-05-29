@@ -42,13 +42,12 @@ def process_chunk(args):
     """
     shm_name, padded_start, padded_end, core_start, core_end, base_ea, is_64 = args
 
-    core_valid = []
-
     # attach shared memory
     with shm_buffer(shm_name) as shm:
         # zero-copy view of the chunk
         full_buf_mv = memoryview(shm.buf)[padded_start:padded_end]  # type: ignore
         try:
+            core_valid = []
             # — Stage 1
             s1_chains = stage1_find_patterns(full_buf_mv, base_ea + padded_start)
 
@@ -76,10 +75,9 @@ def process_chunk(args):
                     chain, full_buf_mv, base_ea + padded_start, is_64
                 )
                 core_valid.extend(ranges)
-
+            return core_valid
         finally:
             del full_buf_mv
-    return core_valid
 
 
 @dataclasses.dataclass
@@ -159,97 +157,63 @@ class AsyncDeobfuscator(AsyncEventEmitter):
         if self.executor:
             self.executor.shutdown(wait=True)
         await self.emit("stopped")
+        self.logger.info("AsyncDeobfuscator shutdown complete.")
 
 
-class WorkerController:
-    """Wrap AsyncDeobfuscator in its own event loop"""
+class AntiDeobWorker(WorkerBase):
+    """Worker implementation for anti-deobfuscation tasks."""
 
-    def __init__(self, deob: AsyncDeobfuscator):
-        self.deob = deob
-        self.loop = asyncio.new_event_loop()
-        self._thread = threading.Thread(target=self._run_loop, daemon=True)
-        self._result = None
-        self._started = False  # Track if start() has been called
-
-    def _run_loop(self):
-        # set and run the loop
-        asyncio.set_event_loop(self.loop)
-        try:
-            self._result = self.loop.run_until_complete(self.deob.run())
-        except Exception as e:
-            logger.error(f"Exception in worker thread loop: {e}", exc_info=True)
-            # Store exception or indicate error?
-            self._result = None  # Or some error sentinel
-
-    def start(self):
-        """Launch the pipeline in its own thread."""
-        if self._started:
-            logger.warning("Start called on an already started worker controller.")
-            return
-        self._thread.start()
-        self._started = True  # Mark as started
-
-    def pause(self):
-        """Pause after finishing the current iteration."""
-        if not self._started:
-            logger.warning("Pause called before worker controller was started.")
-            return
-        logger.info("▶️  Pausing...")
-        self.loop.call_soon_threadsafe(self.deob.pause_evt.set)
-
-    def resume(self):
-        """Resume if previously paused."""
-        if not self._started:
-            logger.warning("Resume called before worker controller was started.")
-            return
-        logger.info("▶️  Resuming...")
-        self.loop.call_soon_threadsafe(self.deob.pause_evt.clear)
-
-    def stop(self):
-        """Stop the pipeline as soon as possible."""
-        if not self._started:
-            logger.warning("Stop called before worker controller was started.")
-            # Even if not started, set stop event for consistency if needed
-            # self.loop.call_soon_threadsafe(self.deob.stop_evt.set) # Maybe not necessary if loop never runs
-            return
-        logger.info("🛑  Stopping...")
-        # Use call_soon_threadsafe as the loop might be running
-        self.loop.call_soon_threadsafe(self.deob.stop_evt.set)
-
-    def join(self):
-        """Block until the pipeline finishes, return the final chains."""
-        if not self._started:
-            logger.warning(
-                "Join called before worker controller was started. Returning current result (None)."
-            )
-            return self._result  # Return None or whatever _result is initially
-
-        # Check if the thread is actually alive before joining
-        # is_alive() is True from the time start() returns until shortly after run() completes
-        if self._thread.is_alive():
-            self._thread.join()
-        else:
-            # Thread was started but might have finished already or crashed
-            logger.info(
-                "Worker thread was not alive when join was called (already finished or failed?)."
-            )
-        self._started = False
-        return self._result
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        PROPOGATE = False
-        SUPPRESS = True
-        if not exc_type:
-            return SUPPRESS
-
-        logger.error(
-            "Worker thread raised an exception: %s %s %s", exc_type, exc_val, exc_tb
+    def __init__(self, shm_name: str, data_size: int, start_ea: int, is_64bit: bool):
+        # Pass AsyncDeobfuscator class and its arguments to WorkerBase
+        emitter_args = {
+            "shm_name": shm_name,
+            "data_size": data_size,
+            "start_ea": start_ea,
+            "is_64bit": is_64bit,
+            # process_chunk_fn will be implicitly passed if AsyncDeobfuscator expects it
+        }
+        # Note: process_chunk is used by AsyncDeobfuscator's run method,
+        # so it doesn't need to be passed to WorkerBase directly here if AsyncDeobfuscator handles it.
+        # If AsyncDeobfuscator needed process_chunk to be injected, that would be part of its own init.
+        super().__init__(
+            async_emitter_class=AsyncDeobfuscator, emitter_args=emitter_args
         )
-        self.stop()
-        return PROPOGATE
+
+        # Specific attributes for AntiDeobWorker, if any, can be initialized here.
+        # For this example, the core logic is within AsyncDeobfuscator.
+        self.logger.info("AntiDeobWorker initialized with new WorkerBase structure.")
+
+    # The `setup` method in WorkerBase now initializes the emitter.
+    # We can override `setup_custom_event_handlers` if we need specific event handling
+    # beyond what WorkerBase provides by default.
+
+    # The `process` method is now largely handled by WorkerBase.
+    # We might not need to override it unless there's very specific pre/post command loop logic.
+
+    # `handle_command` can be extended if new custom commands are needed beyond
+    # what WorkerBase handles (start, stop, pause, resume, ping, set_log_level).
+    # For this example, AsyncDeobfuscator doesn't introduce new commands that
+    # WorkerBase needs to be aware of at this level. The existing commands
+    # control the WorkerController managed by WorkerBase.
+
+    # `cleanup` is also handled by WorkerBase to shut down the emitter.
+
+    # Example of custom event handler setup, if needed:
+    # def setup_custom_event_handlers(self):
+    #     super().setup_custom_event_handlers() # Good practice if base class might add some
+    #     if self.emitter_instance: # emitter_instance is set up in WorkerBase.setup()
+    #         @self.emitter_instance.on("some_custom_event_from_async_deobfuscator")
+    #         def on_my_custom_event(data):
+    #             self.logger.info(f"Received custom event with data: {data}")
+    #             if self.conn:
+    #                 self.conn.send_message("custom_progress", data, status="custom_status")
+
+    # If the results formatting in WorkerBase's send_results is not sufficient,
+    # it can be overridden here. The default handles IntervalSet and lists.
+    # def send_results(self, connection: ConnectionContext, results_data):
+    #    self.logger.info("AntiDeobWorker formatting results...")
+    #    # Custom formatting logic here
+    #    super().send_results(connection, formatted_results_data)
 
 
 def create_anti_deob_message_emitter(dry_run: bool = False) -> MessageEmitter:
@@ -357,190 +321,6 @@ class Taskr:
         self.get().proc.send_command({"command": "ping"})  # type: ignore
 
 
-class AntiDeobWorker(WorkerBase):
-    """Worker implementation for anti-deobfuscation tasks."""
-
-    def __init__(self, shm_name: str, data_size: int, start_ea: int, is_64bit: bool):
-        super().__init__()
-        self.shm_name = shm_name
-        self.data_size = data_size
-        self.start_ea = start_ea
-        self.is_64bit = is_64bit
-
-    @property
-    def deob(self) -> AsyncDeobfuscator:
-        return self._deob
-
-    @deob.setter
-    def deob(self, value: AsyncDeobfuscator):
-        self._deob = value
-
-    @property
-    def conn(self) -> ConnectionContext | None:
-        return self._conn
-
-    @conn.setter
-    def conn(self, value: ConnectionContext | None):
-        self._conn = value
-
-    def setup(self, **kwargs):
-        """Initialize the deobfuscator."""
-        self.deob = AsyncDeobfuscator(
-            shm_name=self.shm_name,
-            data_size=self.data_size,
-            start_ea=self.start_ea,
-            is_64bit=self.is_64bit,
-        )
-
-        # Set up event handlers
-        self._setup_event_handlers()
-
-    def _setup_event_handlers(self):
-        """Set up progress tracking and event handlers."""
-
-        @self.deob.on("run_started")
-        def on_run_started():
-            self.logger.info("▶️  Pipeline starting")
-            if self.conn:
-                self.conn.send_message(
-                    "progress", 0.0, status="running", stage="starting"
-                )
-
-        @self.deob.on("run_finished")
-        def on_run_finished(ch):
-            self.logger.info("✅ Processed %d chunks", len(ch))
-            if self.conn:
-                self.conn.send_message(
-                    "progress",
-                    0.95,
-                    status="finalizing",
-                    stage="stage4_complete",
-                    chunks_count=len(ch),
-                )
-
-        @self.deob.on("stopped")
-        def on_stopped():
-            self.logger.info("🛑 Worker shutting down")
-            if self.conn:
-                self.conn.send_message("status", "stopped", status="stopped")
-
-    def process(self, connection: ConnectionContext, **kwargs):
-        """Main processing loop."""
-        self.conn = connection  # Store for event handlers
-
-        # Set up controller
-        self.controller = WorkerController(self.deob)
-
-        # Send initial ready message
-        connection.send_message("status", "connected", status="ready")
-
-        self.logger.info("Starting command loop...")
-
-        try:
-            while True:
-                try:
-                    if not connection.closed and not connection.poll(timeout=0.5):
-                        continue
-                    cmd = connection.recv()
-                    self.logger.debug(f"← Received command: {cmd}")
-                except EOFError:
-                    self.logger.error("Connection closed by parent")
-                    break
-
-                # Handle command
-                if isinstance(cmd, dict):
-                    if not self.handle_command(cmd, connection):
-                        break
-
-                else:
-                    self.logger.warning(
-                        f"Received unexpected command type: {type(cmd)}"
-                    )
-                    connection.send_message(
-                        "error",
-                        f"Expected dict command, got {type(cmd)}",
-                        status="error",
-                    )
-            # Ensure pipeline stops
-            if self.controller:
-                self.controller.stop()
-
-        finally:
-            self.conn = None  # Clear reference
-
-        # Wait for results
-        self.logger.info("Waiting for pipeline to finish...")
-        results = self.controller.join() if self.controller else None
-
-        if results:
-            # Format and send results
-            asjson = [
-                {
-                    "address": s,
-                    "length": e - s,
-                    "end": e,
-                }
-                for s, e in results.as_tuples()
-            ]
-
-            self.logger.info(f"Sending {len(asjson)} results...")
-            connection.send_message(
-                "status", "sending_results", status="sending_results"
-            )
-            time.sleep(5)  # Give IDA time to prepare
-            connection.send_message(
-                "result", asjson, status="success", count=len(asjson)
-            )
-            connection.send_message("status", "results_sent", status="results_sent")
-
-    def handle_command(self, cmd: dict, connection: ConnectionContext) -> bool:
-        """Handle custom commands."""
-        cmd_type = cmd.get("command")
-        if cmd_type in ["stop", "exit", "shutdown"]:
-            self.logger.info("Received exit command")
-            return False
-        elif cmd_type == "ping":
-            connection.send_message("status", "pong", status="running")
-        elif cmd_type == "pause":
-            self.controller.pause()
-            connection.send_message("status", "paused", status="paused")
-        elif cmd_type == "resume":
-            self.controller.resume()
-            connection.send_message("status", "resumed", status="running")
-        elif cmd_type == "start":
-            self.controller.start()
-            connection.send_message("status", "started", status="running")
-        elif cmd_type == "set_log_level":
-            level = cmd.get("level")
-            if level is None:
-                self.logger.error("Log level is required")
-                connection.send_message(
-                    "error", "Log level is required", status="error"
-                )
-                return True
-            self.logger.setLevel(level)
-            # self.controller.set_log_level(level)
-            logger.info(f"Worker log level set to {level}")
-            connection.send_message(
-                "status",
-                f"log_level_set:{level}",
-                status="running",
-            )
-        else:
-            self.logger.warning(f"Unknown command type: {cmd_type}")
-            connection.send_message(
-                "error", f"Unknown command: {cmd_type}", status="error"
-            )
-        return True
-
-    async def cleanup(self):
-        """Clean up resources."""
-        if self.controller:
-            self.controller.stop()
-        if self.deob:
-            await self.deob.shutdown()
-
-
 def main():
     """Worker entry point."""
     parser = argparse.ArgumentParser()
@@ -554,7 +334,7 @@ def main():
     args = parser.parse_args()
     worker = None
     try:
-        # Create worker
+        # Create worker instance
         worker = AntiDeobWorker(
             shm_name=args.shm_name,
             data_size=args.data_size,
@@ -562,19 +342,25 @@ def main():
             is_64bit=bool(args.is64),
         )
 
-        # Set up worker
-        worker.setup()
+        # WorkerBase's setup will initialize AsyncDeobfuscator
+        worker.setup()  # This is crucial
 
         # Process with connection
+        # WorkerBase's process method now handles the command loop
         with ConnectionContext(args.address, args.authkey) as conn:
-            worker.process(conn)
+            worker.process(conn)  # This starts the command loop in WorkerBase
 
     except Exception as e:
-        logger.error(f"Unhandled exception in worker: {e}", exc_info=True)
+        logger.error("Unhandled exception in worker_main: %s", e, exc_info=True)
     finally:
         if worker:
-            asyncio.run(worker.cleanup())
-        logger.info("Worker finished.")
+            # WorkerBase's cleanup should handle shutting down the emitter
+            # It's an async method, so needs to be run in an event loop
+            try:
+                asyncio.run(worker.cleanup())
+            except Exception as e:
+                logger.error("Exception during worker cleanup: %s", e, exc_info=True)
+        logger.info("Worker main finished.")
 
 
 if __name__ == "__main__":
