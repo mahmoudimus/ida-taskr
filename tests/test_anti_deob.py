@@ -1,12 +1,3 @@
-import os
-
-# Set framework path for IDA Pro
-os.environ["DYLD_FRAMEWORK_PATH"] = (
-    "/Applications/IDA Professional 9.1.app/Contents/Frameworks:"
-    + os.environ.get("DYLD_FRAMEWORK_PATH", "")
-)
-
-
 import concurrent.futures
 import functools
 import json
@@ -17,10 +8,12 @@ import os
 import pathlib
 import unittest
 
-import idapro  # type: ignore
+import idapro  # isort: ignore
 
 from ida_taskr import helpers
-from tests.anti_deob.deobfuscator import AsyncDeobfuscator
+
+from anti_deob.deobfuscator import AsyncDeobfuscator  # isort:skip
+
 
 logfmt = "%(levelname)s %(name)s: %(message)s"
 debug_configure_logging = functools.partial(

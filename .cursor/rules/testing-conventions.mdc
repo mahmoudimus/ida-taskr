@@ -1,0 +1,138 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Testing Conventions for IDA TaskR
+
+## Test Structure and Organization
+
+### Test File Naming
+- All test files must start with `test_` prefix (e.g., `test_event_emitter.py`)
+- Test classes should use `TestCamelCase` naming
+- Test methods should use `test_descriptive_name` format
+
+### Test Class Structure
+```python
+class TestMessageEmitter(unittest.TestCase):
+    """Test suite for MessageEmitter event handling."""
+
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.emitter = MessageEmitter()
+        self.test_events = []
+
+    def tearDown(self):
+        """Clean up after each test method."""
+        self.test_events.clear()
+
+    def test_specific_functionality(self):
+        """Test docstring describing what is being tested."""
+        # Test implementation
+```
+
+## Mocking Patterns
+
+### PyQt5 Components
+Always mock PyQt5 imports since they're not available in test environment:
+```python
+@patch('ida_taskr.launcher.WorkerLauncher.launch_worker')
+def test_worker_launcher_integration(self, mock_launch_worker):
+    mock_launch_worker.return_value = True
+    # Test implementation
+```
+
+### Event Emitter Testing
+Use list collectors to verify event emissions:
+```python
+def test_event_handling(self):
+    results = []
+    
+    @self.emitter.on("worker_results")
+    def on_results(results_data):
+        results.append(results_data)
+    
+    self.emitter.emit_worker_results({"test": "data"})
+    self.assertEqual(len(results), 1)
+```
+
+## Test Environment Setup
+
+### Package Initialization
+The [tests/__init__.py](mdc:tests/__init__.py) handles:
+- IDA Pro framework path configuration
+- Python path setup for src directory
+- Base test class definitions
+
+### Test Discovery
+Tests are discovered automatically by unittest when using proper naming:
+- Files: `test_*.py`
+- Classes: `Test*`
+- Methods: `test_*`
+
+## Error Handling in Tests
+
+### Exception Testing
+```python
+def test_exception_propagation(self):
+    """Test that exceptions are properly propagated."""
+    @self.emitter.on("worker_message")
+    def failing_handler(message):
+        raise Exception("Handler failed")
+    
+    with self.assertRaises(Exception) as context:
+        self.emitter.emit_worker_message({"test": "message"})
+    
+    self.assertEqual(str(context.exception), "Handler failed")
+```
+
+### Avoiding Order Dependencies
+- Don't rely on handler execution order (Python sets are unordered)
+- Use deterministic test data
+- Clean up state in tearDown methods
+
+## Common Test Utilities
+
+### Mock Connection Context
+```python
+def create_mock_connection(self):
+    mock_conn = Mock()
+    mock_conn.send_message.return_value = True
+    mock_conn.closed = False
+    return mock_conn
+```
+
+### Async Testing Patterns
+For async components, use proper async test methods:
+```python
+async def test_async_functionality(self):
+    result = await some_async_operation()
+    self.assertIsNotNone(result)
+```
+
+## Running Specific Tests
+
+### Test Runner Integration
+The [run_tests.sh](mdc:run_tests.sh) script supports:
+```bash
+# Single test file
+./run_tests.sh test_event_emitter
+
+# All tests
+./run_tests.sh
+
+# With environment variables
+TEST_ROUTINE_ADDR=0x123 ./run_tests.sh test_anti_deob
+```
+
+### Direct Python Execution
+```bash
+# Single test file
+python -m unittest tests.test_event_emitter -v
+
+# Single test class
+python -m unittest tests.test_event_emitter.TestMessageEmitter -v
+
+# Single test method
+python -m unittest tests.test_event_emitter.TestMessageEmitter.test_decorator_event_registration -v
+```

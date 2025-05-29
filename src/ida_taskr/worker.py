@@ -132,6 +132,11 @@ class WorkerBase(WorkerProtocol):
     """Base class for worker implementations."""
 
     def __init__(self):
+        self._commands = {
+            "stop": self._handle_stop,
+            "pause": self._handle_pause,
+            "resume": self._handle_resume,
+        }
         self.logger = get_logger(self.__class__.__name__)
         self._running = False
         self._paused = False
@@ -149,7 +154,31 @@ class WorkerBase(WorkerProtocol):
         Handle standard commands. Override for custom commands.
         Returns True to continue processing, False to exit.
         """
-        raise NotImplementedError("Subclasses must implement handle_command()")
+        cmd_type = cmd.get("command")
+        if cmd_type is None:
+            return True
+        handler = self._commands.get(cmd_type)
+        if handler:
+            return handler(cmd, conn)
+        return True
+
+    def _handle_stop(self, cmd, conn):
+        """Handle stop command."""
+        self._running = False
+        conn.send_message("status", "stopped")
+        return False
+
+    def _handle_pause(self, cmd, conn):
+        """Handle pause command."""
+        self._paused = True
+        conn.send_message("status", "paused")
+        return True
+
+    def _handle_resume(self, cmd, conn):
+        """Handle resume command."""
+        self._paused = False
+        conn.send_message("status", "resumed")
+        return True
 
     def process(self, connection: ConnectionContext, **kwargs):
         """Main processing loop - implement in subclasses."""

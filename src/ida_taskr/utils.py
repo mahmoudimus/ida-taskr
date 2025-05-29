@@ -176,18 +176,21 @@ class DataProcessorCore:
         """Clean up shared memory."""
         if not self._shared_memory:
             return
-
         try:
-            logger.info("Unlinking shared memory: %s", self._shared_memory.name)
             self._shared_memory.close()
-            multiprocessing.shared_memory.SharedMemory(
-                self._shared_memory.name
-            ).unlink()
-            logger.info("Shared memory unlinked.")
+            shm = multiprocessing.shared_memory.SharedMemory(self._shared_memory.name)
+            shm.unlink()
+            logger.info("Shared memory unlinked: %s", self._shared_memory.name)
         except FileNotFoundError:
-            logger.warning("Shared memory already unlinked.")
+            logger.warning(
+                "Shared memory already unlinked: %s", self._shared_memory.name
+            )
+        except PermissionError as e:
+            logger.error("Permission error unlinking shared memory: %s", e)
         except Exception as e:
-            logger.error("Error unlinking shared memory: %s", e, exc_info=True)
+            logger.error(
+                "Unexpected error unlinking shared memory: %s", e, exc_info=True
+            )
         finally:
             self._shared_memory = None
 

@@ -23,3 +23,7 @@ You are an expert in Python, C, and C++, with deep knowledge of Windows reverse 
 - When modifying commented code, update the comments, if any, to reflect any changes.
 - Preserve comments, do not remove them unless they are no longer relevant.
 - Use doctests to comment and document functions or methods to help the reader understand the function or method's intention.
+
+## Running tests
+
+- Add any tests to the `@tests` folder and run it `./run_tests.sh`

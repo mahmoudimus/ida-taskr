@@ -74,10 +74,12 @@ def configure_logging(
         log.addHandler(handler)
 
 
-def get_logger(name=None, configurer=None):
+def get_logger(name=None, configurer=None, log_level=logging.INFO, custom_logger=None):
     """Get a configured logger instance."""
+    if custom_logger:
+        return custom_logger
     if not configurer:
-        configurer = configure_logging
+        configurer = functools.partial(configure_logging, level=log_level)
     name = name or f"{"ida." if is_ida() else "worker."}{__name__}"
     logger = logging.getLogger(name)
     configurer(logger)
