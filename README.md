@@ -4,6 +4,8 @@
 
 ## Overview
 
+IDA Taskr is a pure Python library for IDA Pro related parallel computing. It lets you use the power of Qt (built-in to IDA!) and Python's powerful multiprocessing and asyncio systems to quickly process computationally intensive tasks without freezing IDA Pro. Oh, and it's super fast too.
+
 ## Testing 🧪
 
 `ida-taskr` is thoroughly tested to ensure reliability.
