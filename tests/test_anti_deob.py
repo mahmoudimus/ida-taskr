@@ -12,7 +12,7 @@ import idapro  # isort: ignore
 
 from ida_taskr import helpers
 
-from anti_deob.deobfuscator import AsyncDeobfuscator  # isort:skip
+from anti_deob.worker_main import AsyncDeobfuscator  # isort:skip
 
 
 logfmt = "%(levelname)s %(name)s: %(message)s"
