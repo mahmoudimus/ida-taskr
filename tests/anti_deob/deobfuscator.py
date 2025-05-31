@@ -1019,7 +1019,7 @@ class JumpTargetAnalyzer:
 
 def analyze_chain(
     chain: MatchChain,
-    mem: bytes,
+    mem: memoryview,
     start_ea: int,
     is_x64: bool,
     max_size: int = MAX_PATTERN_LEN,
