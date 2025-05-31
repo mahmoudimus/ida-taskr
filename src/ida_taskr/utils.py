@@ -631,3 +631,69 @@ def shm_buffer(
         yield shm.buf[:buf_len] if buf_len else shm
     finally:
         shm.close()
+
+
+def execute_chunk_with_shm_view(
+    user_chunk_processor: typing.Callable[..., typing.Any],
+    shm_name: str,
+    padded_start: int,
+    padded_end: int,
+    *user_args: typing.Any,
+) -> typing.Any:
+    """
+    Handles SHM attachment, memoryview creation, and cleanup for a user's chunk processing function.
+
+    Ensures that the memoryview of the chunk is deleted before the shared memory object is closed,
+    preventing "BufferError: cannot close exported pointers exist".
+
+    Args:
+        user_chunk_processor: A callable that takes (memoryview, *user_args) and returns results.
+                              The memoryview passed to it is a slice of the shared memory.
+        shm_name: Name of the shared memory segment.
+        padded_start: Start offset for the memoryview slice within the shared memory buffer.
+        padded_end: End offset for the memoryview slice.
+        *user_args: Additional arguments to pass to the user_chunk_processor.
+
+    Returns:
+        The result from the user_chunk_processor.
+    """
+    # shm_buffer is called with no buf_len, so it yields the SharedMemory object itself.
+    with shm_buffer(shm_name) as shm_object:  # shm_object is a SharedMemory instance
+        if not isinstance(shm_object, multiprocessing.shared_memory.SharedMemory):
+            # This case should ideally not happen if shm_buffer is used as intended (no buf_len)
+            # or if shm_buffer is modified to always yield SharedMemory object and handle buf internally.
+            # For now, assume shm_object.buf is the way if shm_buffer yields memoryview directly.
+            # However, the current shm_buffer yields SharedMemory if buf_len is None.
+            logger.error(
+                "shm_buffer did not yield a SharedMemory object as expected. Type: %s",
+                type(shm_object),
+            )
+            # Fallback or raise error, this indicates misuse or change in shm_buffer's contract
+            # For robustness, let's try to access .buf if it's not SharedMemory but has it
+            try:
+                buffer_to_view = shm_object.buf  # type: ignore
+            except AttributeError:
+                logger.error("Shared memory object does not have a .buf attribute.")
+                raise TypeError(
+                    "shm_buffer yielded an unexpected object type without a .buf attribute."
+                ) from None
+        else:
+            buffer_to_view = shm_object.buf
+
+        # Create the specific memoryview for this chunk
+        # The memoryview is taken from the *entire* buffer of the shm_object
+        chunk_mv = memoryview(buffer_to_view)[padded_start:padded_end]
+        try:
+            # Call the user's actual logic function
+            result = user_chunk_processor(chunk_mv, *user_args)
+            return result
+        finally:
+            # Crucial: delete the memoryview to release buffer export before shm_object.close()
+            # which is called by shm_buffer's __exit__.
+            del chunk_mv
+            logger.debug(
+                "Deleted memoryview for chunk [%d:%d] from shm '%s'",
+                padded_start,
+                padded_end,
+                shm_name,
+            )

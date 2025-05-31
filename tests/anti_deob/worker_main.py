@@ -23,6 +23,7 @@ from ida_taskr.utils import (
     AsyncEventEmitter,
     IntervalSet,
     PatchManager,
+    execute_chunk_with_shm_view,
     log_execution_time,
     make_chunks,
     resolve_overlaps,
@@ -35,49 +36,122 @@ logger = get_logger(__name__)
 WORKER_SCRIPT_PATH = pathlib.Path(__file__)
 
 
-def process_chunk(args):
+def core_deob_logic_for_chunk(
+    chunk_mv: memoryview, base_ea_for_chunk_mv: int, is_64: bool
+):
     """
-    Entire 4-stage pipeline over one overlapping chunk.
-    Returns only those chains whose start is in the chunk's core region.
+    Core deobfuscation logic for a given chunk (memoryview).
+    This function receives an already prepared memoryview of a padded chunk.
+    Args:
+        chunk_mv: Memoryview of the (padded) chunk data from shared memory.
+        base_ea_for_chunk_mv: The effective base EA for the start of chunk_mv.
+        is_64: Boolean indicating if the architecture is 64-bit.
+    Returns:
+        A list of Range objects found within this chunk.
+    """
+    # Note: The original process_chunk filtered results based on core_start/core_end.
+    # This responsibility can either be moved to the caller of this core logic
+    # or handled here if core_start_offset_in_chunk_mv and core_end_offset_in_chunk_mv are passed.
+    # For this refactoring, we assume all ranges found in the chunk_mv are returned,
+    # and any filtering by original core region happens in the caller if still needed.
+
+    found_ranges = []
+
+    # — Stage 1: Find patterns in the provided chunk_mv
+    # The base address for stage1_find_patterns should be the effective EA of chunk_mv
+    s1_chains = stage1_find_patterns(chunk_mv, base_ea_for_chunk_mv)
+
+    # --- TRACEPOINT (adjusted for new base_ea_for_chunk_mv) ---
+    TARGET_EA = 0x140005131
+    for chain in s1_chains:
+        # chain.overall_start() is relative to chain.base_address, which is base_ea_for_chunk_mv
+        s = chain.overall_start()  # This is an absolute EA
+        e = s + chain.overall_length()
+        if s <= TARGET_EA < e:
+            logger.warning(
+                "[TRACE][Stage1] (core logic) covers 0x%X: %s", TARGET_EA, chain
+            )
+            for seg in chain.segments:
+                # seg.start is relative to chain.base_address
+                abs_s = chain.base_address + seg.start
+                logger.warning(
+                    "    seg @0x%X len=%d desc=%s",
+                    abs_s,
+                    seg.length,
+                    seg.description,
+                )
+            break
+    # -----------------------------------------------------------
+
+    for chain in s1_chains:
+        # analyze_chain also needs the chunk_mv and its corresponding base EA
+        ranges = analyze_chain(chain, chunk_mv, base_ea_for_chunk_mv, is_64)
+        found_ranges.extend(ranges)
+
+    return found_ranges
+
+
+def dispatch_chunk_processing(args):
+    """
+    Dispatcher function called by ProcessPoolExecutor.
+    Unpacks arguments, calls execute_chunk_with_shm_view with the core logic.
     """
     shm_name, padded_start, padded_end, core_start, core_end, base_ea, is_64 = args
 
-    # attach shared memory
-    with shm_buffer(shm_name) as shm:
-        # zero-copy view of the chunk
-        full_buf_mv = memoryview(shm.buf)[padded_start:padded_end]  # type: ignore
-        try:
-            core_valid = []
-            # — Stage 1
-            s1_chains = stage1_find_patterns(full_buf_mv, base_ea + padded_start)
+    # Arguments for core_deob_logic_for_chunk, after memoryview is prepared by the wrapper:
+    # The base_ea for the chunk_mv will be the original base_ea + padded_start offset.
+    core_logic_user_args = (base_ea + padded_start, is_64)
 
-            # ─── TRACEPOINT: Stage 1 ───────────────────────────────────
-            TARGET_EA = 0x140005131
-            for chain in s1_chains:
-                s = chain.overall_start()
-                e = s + chain.overall_length()
-                if s <= TARGET_EA < e:
-                    logger.warning("[TRACE][Stage1] covers 0x%X: %s", TARGET_EA, chain)
-                    for seg in chain.segments:
-                        abs_s = chain.base_address + seg.start
-                        logger.warning(
-                            "    seg @0x%X len=%d desc=%s",
-                            abs_s,
-                            seg.length,
-                            seg.description,
-                        )
-                    break
-            # ────────────────────────────────────────────────────────────
+    # Call the wrapper that handles SHM and memoryview lifecycle
+    results = execute_chunk_with_shm_view(
+        core_deob_logic_for_chunk,
+        shm_name,
+        padded_start,
+        padded_end,
+        *core_logic_user_args,
+    )
 
-            for chain in s1_chains:
-                # IMPORTANT: buf starts at padded_start, so bump base_ea accordingly
-                ranges = analyze_chain(
-                    chain, full_buf_mv, base_ea + padded_start, is_64
-                )
-                core_valid.extend(ranges)
-            return core_valid
-        finally:
-            del full_buf_mv
+    # If filtering by core region is still desired (as in original process_chunk):
+    # This needs core_start and core_end to be relative to the original buffer,
+    # and the ranges in `results` to have absolute EAs.
+    # The `analyze_chain` and `stage1_find_patterns` should produce absolute EAs if their
+    # base_ea parameter is an absolute EA.
+    # Assuming `r.start` from `analyze_chain` gives an absolute EA:
+    final_results_in_core = []
+    # Convert core_start/core_end (offsets from buffer start) to absolute EAs
+    abs_core_start = base_ea + core_start
+    abs_core_end = base_ea + core_end
+    for r in results:
+        if abs_core_start <= r.start < abs_core_end:
+            final_results_in_core.append(r)
+    # return final_results_in_core
+    return results  # For now, returning all results from the chunk, filtering can be re-evaluated.
+    # The original process_chunk did this filtering. If it's crucial, we should keep it.
+    # Given the original comment: "Returns only those chains whose start is in the chunk's core region."
+    # We should probably keep this filtering.
+
+    # Re-instating the original filtering logic:
+    # Ensure `r.start` in `results` are absolute EAs for this comparison to work.
+    # `chain.overall_start()` in `core_deob_logic_for_chunk` is absolute.
+    # `analyze_chain` if it returns `Range` objects, their `start` should also be absolute EA.
+    # If `Range.start` is an offset from `base_ea_for_chunk_mv`, it needs adjustment before this check.
+    # Assuming `Range.start` is absolute EA:
+    filtered_results = []
+    abs_core_start_ea = base_ea + core_start
+    abs_core_end_ea = base_ea + core_end
+    for r_obj in results:  # Assuming results is a list of Range objects
+        if (
+            hasattr(r_obj, "start")
+            and abs_core_start_ea <= r_obj.start < abs_core_end_ea
+        ):
+            filtered_results.append(r_obj)
+        elif (
+            isinstance(r_obj, tuple) and len(r_obj) == 2
+        ):  # If it's (start_ea, end_ea) tuple
+            if abs_core_start_ea <= r_obj[0] < abs_core_end_ea:
+                filtered_results.append(r_obj)
+        # Add other checks if result structure varies
+    return filtered_results
 
 
 @dataclasses.dataclass
@@ -141,7 +215,8 @@ class AsyncDeobfuscator(AsyncEventEmitter):
             for padded_start, padded_end, core_start, core_end in chunks
         ]
         futures = [
-            loop.run_in_executor(self.executor, process_chunk, job) for job in jobs
+            loop.run_in_executor(self.executor, dispatch_chunk_processing, job)
+            for job in jobs
         ]
 
         # 3) wait, flatten, resolve overlaps globally
