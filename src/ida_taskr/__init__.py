@@ -9,6 +9,9 @@ bidirectional communication.
 from .helpers import MultiprocessingHelper, get_logger, is_ida
 from .launcher import WorkerLauncher
 from .protocols import MessageEmitter, WorkerProtocol
+
+# New import for TaskRunner
+from .task_runner import TaskRunner
 from .utils import DataProcessorCore
 from .worker import ConnectionContext, WorkerBase
 
@@ -21,6 +24,7 @@ __all__ = [
     "is_ida",
     "WorkerProtocol",
     "MessageEmitter",
+    "TaskRunner",
     "DataProcessorCore",
 ]
 

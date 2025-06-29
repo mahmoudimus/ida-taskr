@@ -13,6 +13,7 @@ import multiprocessing.shared_memory
 import pathlib
 import time
 import typing
+from abc import ABC, abstractmethod
 from bisect import bisect_left, bisect_right
 from typing import Any, Callable, Generic, TypeVar, overload
 
@@ -176,18 +177,21 @@ class DataProcessorCore:
         """Clean up shared memory."""
         if not self._shared_memory:
             return
-
         try:
-            logger.info("Unlinking shared memory: %s", self._shared_memory.name)
             self._shared_memory.close()
-            multiprocessing.shared_memory.SharedMemory(
-                self._shared_memory.name
-            ).unlink()
-            logger.info("Shared memory unlinked.")
+            shm = multiprocessing.shared_memory.SharedMemory(self._shared_memory.name)
+            shm.unlink()
+            logger.info("Shared memory unlinked: %s", self._shared_memory.name)
         except FileNotFoundError:
-            logger.warning("Shared memory already unlinked.")
+            logger.warning(
+                "Shared memory already unlinked: %s", self._shared_memory.name
+            )
+        except PermissionError as e:
+            logger.error("Permission error unlinking shared memory: %s", e)
         except Exception as e:
-            logger.error("Error unlinking shared memory: %s", e, exc_info=True)
+            logger.error(
+                "Unexpected error unlinking shared memory: %s", e, exc_info=True
+            )
         finally:
             self._shared_memory = None
 
@@ -271,16 +275,20 @@ class EventEmitter:
         self._listeners[event].discard(handler)
 
     def emit(self, event, *args, **kwargs):
-        for handler in self._listeners[event]:
+        for handler in list(self._listeners[event]):
             handler(*args, **kwargs)
 
 
 @dataclasses.dataclass
-class AsyncEventEmitter:
+class AsyncEventEmitter(ABC):
     def __post_init__(self):
         self._listeners = collections.defaultdict(set)
+        self.pause_evt = asyncio.Event()
+        self.stop_evt = asyncio.Event()
+        self.logger = get_logger(self.__class__.__name__)
 
     def on(self, event, handler=None):
+        """Register an event handler for the given event."""
         if handler:
             self._listeners[event].add(handler)
             return handler
@@ -292,11 +300,30 @@ class AsyncEventEmitter:
 
         return decorator
 
+    def once(self, event, handler):
+        @functools.wraps(handler)
+        def once_handler(*args, **kwargs):
+            self.remove(event, once_handler)
+            return handler(*args, **kwargs)
+
+        self.on(event, once_handler)
+
+    def remove(self, event, handler):
+        self._listeners[event].discard(handler)
+
     async def emit(self, event, *args):
-        for h in self._listeners.get(event, []):
-            res = h(*args)
-            if asyncio.iscoroutine(res):
-                await res
+        for handler in list(self._listeners[event]):
+            await handler(*args)
+
+    @abstractmethod
+    async def run(self):
+        """Core asynchronous task execution logic."""
+        pass
+
+    @abstractmethod
+    async def shutdown(self):
+        """Cleanup resources for the async task."""
+        pass
 
 
 def log_execution_time(func, loglvl=logging.INFO):
@@ -604,3 +631,69 @@ def shm_buffer(
         yield shm.buf[:buf_len] if buf_len else shm
     finally:
         shm.close()
+
+
+def execute_chunk_with_shm_view(
+    user_chunk_processor: typing.Callable[..., typing.Any],
+    shm_name: str,
+    padded_start: int,
+    padded_end: int,
+    *user_args: typing.Any,
+) -> typing.Any:
+    """
+    Handles SHM attachment, memoryview creation, and cleanup for a user's chunk processing function.
+
+    Ensures that the memoryview of the chunk is deleted before the shared memory object is closed,
+    preventing "BufferError: cannot close exported pointers exist".
+
+    Args:
+        user_chunk_processor: A callable that takes (memoryview, *user_args) and returns results.
+                              The memoryview passed to it is a slice of the shared memory.
+        shm_name: Name of the shared memory segment.
+        padded_start: Start offset for the memoryview slice within the shared memory buffer.
+        padded_end: End offset for the memoryview slice.
+        *user_args: Additional arguments to pass to the user_chunk_processor.
+
+    Returns:
+        The result from the user_chunk_processor.
+    """
+    # shm_buffer is called with no buf_len, so it yields the SharedMemory object itself.
+    with shm_buffer(shm_name) as shm_object:  # shm_object is a SharedMemory instance
+        if not isinstance(shm_object, multiprocessing.shared_memory.SharedMemory):
+            # This case should ideally not happen if shm_buffer is used as intended (no buf_len)
+            # or if shm_buffer is modified to always yield SharedMemory object and handle buf internally.
+            # For now, assume shm_object.buf is the way if shm_buffer yields memoryview directly.
+            # However, the current shm_buffer yields SharedMemory if buf_len is None.
+            logger.error(
+                "shm_buffer did not yield a SharedMemory object as expected. Type: %s",
+                type(shm_object),
+            )
+            # Fallback or raise error, this indicates misuse or change in shm_buffer's contract
+            # For robustness, let's try to access .buf if it's not SharedMemory but has it
+            try:
+                buffer_to_view = shm_object.buf  # type: ignore
+            except AttributeError:
+                logger.error("Shared memory object does not have a .buf attribute.")
+                raise TypeError(
+                    "shm_buffer yielded an unexpected object type without a .buf attribute."
+                ) from None
+        else:
+            buffer_to_view = shm_object.buf
+
+        # Create the specific memoryview for this chunk
+        # The memoryview is taken from the *entire* buffer of the shm_object
+        chunk_mv = memoryview(buffer_to_view)[padded_start:padded_end]
+        try:
+            # Call the user's actual logic function
+            result = user_chunk_processor(chunk_mv, *user_args)
+            return result
+        finally:
+            # Crucial: delete the memoryview to release buffer export before shm_object.close()
+            # which is called by shm_buffer's __exit__.
+            del chunk_mv
+            logger.debug(
+                "Deleted memoryview for chunk [%d:%d] from shm '%s'",
+                padded_start,
+                padded_end,
+                shm_name,
+            )
