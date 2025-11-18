@@ -64,7 +64,7 @@ Integration tests are organized into two categories:
 #### Qt Core Tests (No IDA Required)
 - `test_integration_qt_core.py` - Tests for Qt Core functionality (QProcess, QThread, signals/slots)
   - Tests WorkerLauncher, MessageEmitter, and Qt-based process management
-  - Runs in headless mode with both PyQt5 and PySide6
+  - Runs in headless mode using PySide6 (installed via pip)
   - Does not require IDA Pro - only Qt framework
 
 #### IDA Pro Tests (Require IDA)
