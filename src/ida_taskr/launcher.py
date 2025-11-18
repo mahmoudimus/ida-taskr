@@ -7,13 +7,47 @@ import pickle
 import select
 import sys
 
-from PyQt5 import QtCore  # type: ignore
-from PyQt5.QtCore import QProcessEnvironment
-
 from .helpers import MultiprocessingHelper, get_logger
 from .protocols import MessageEmitter
 
 logger = get_logger()
+
+# Try to import Qt - gracefully handle if not available
+QT_AVAILABLE = False
+QtCore = None
+QProcessEnvironment = None
+
+try:
+    from PyQt5 import QtCore  # type: ignore
+    from PyQt5.QtCore import QProcessEnvironment
+    QT_AVAILABLE = True
+except ImportError:
+    try:
+        from PySide6 import QtCore  # type: ignore
+        from PySide6.QtCore import QProcessEnvironment
+        QT_AVAILABLE = True
+    except ImportError:
+        # Qt not available - create mock base classes for import compatibility
+        class QtCore:  # type: ignore
+            class QThread:
+                def __init__(self, *args, **kwargs):
+                    raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
+            class QObject:
+                def __init__(self, *args, **kwargs):
+                    raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
+            class QProcess:
+                def __init__(self, *args, **kwargs):
+                    raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
+            class QSocketNotifier:
+                Read = 1
+                def __init__(self, *args, **kwargs):
+                    raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
+            pyqtSignal = lambda *args: None  # Dummy signal for type hints
+
+        class QProcessEnvironment:  # type: ignore
+            @staticmethod
+            def systemEnvironment():
+                raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
 
 
 class TemporarilyDisableNotifier:

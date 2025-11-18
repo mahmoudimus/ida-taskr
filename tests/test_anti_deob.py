@@ -6,9 +6,16 @@ import multiprocessing
 import multiprocessing.shared_memory
 import os
 import pathlib
+import sys
 import unittest
 
-import idapro  # isort: ignore
+# Only import idapro if we're not running inside IDA already
+if not any(sys.executable.endswith(x) for x in ["ida.exe", "ida64.exe", "idaq.exe", "idaq64.exe"]):
+    try:
+        import idapro  # isort: ignore
+    except ImportError:
+        # Skip this entire test module if idapro is not available
+        raise unittest.SkipTest("idapro module not available - skipping anti_deob tests")
 
 from ida_taskr import helpers
 
@@ -26,7 +33,8 @@ helpers.configure_logging(logger, level=logging.INFO, fmt_str=logfmt)
 
 def get_debug_logger(name=None):
     """Get a configured logger instance."""
-    name = name or f"{"ida." if helpers.is_ida() else "worker."}{__name__}"
+    prefix = "ida." if helpers.is_ida() else "worker."
+    name = name or f"{prefix}{__name__}"
     logger = logging.getLogger(name)
     helpers.configure_logging(logger, level=logging.DEBUG, fmt_str=logfmt)
     return logger

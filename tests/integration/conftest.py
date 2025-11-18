@@ -22,20 +22,36 @@ def ida_available():
 
 @pytest.fixture(scope="session")
 def qt_framework():
-    """Determine which Qt framework is available (PyQt5 or PySide6)."""
+    """Determine which Qt framework is available (PyQt5 or PySide6).
+
+    Only works when running in IDA GUI mode (idaapi.is_idaq()).
+    Skips tests if Qt is not available or not in GUI mode.
+    """
+    # Check if we're in IDA GUI mode
+    try:
+        import idaapi
+        if not idaapi.is_idaq():
+            pytest.skip("Not running in IDA GUI mode (idaapi.is_idaq() == False)")
+            return None
+    except (ImportError, AttributeError):
+        # idaapi not available or is_idaq doesn't exist
+        pytest.skip("IDA API not available or cannot determine GUI mode")
+        return None
+
+    # Try to import Qt frameworks
     try:
         import PyQt5
         return "PyQt5"
-    except ImportError:
+    except (ImportError, NotImplementedError):
         pass
 
     try:
         import PySide6
         return "PySide6"
-    except ImportError:
+    except (ImportError, NotImplementedError):
         pass
 
-    pytest.skip("No Qt framework available (PyQt5 or PySide6)")
+    pytest.skip("No Qt framework available (PyQt5 or PySide6) or not in GUI mode")
     return None
 
 
