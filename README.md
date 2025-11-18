@@ -12,14 +12,17 @@ IDA Taskr is a pure Python library for IDA Pro related parallel computing. It le
 
 ### Unit Tests
 
-Run unit tests locally:
+Unit tests use mocks and don't require IDA Pro or Qt. Run them locally:
 
 ```bash
 # Run all unit tests
-python3 -m unittest discover -s tests/
+python3 -m unittest discover -s tests/unit/
 
 # Or use the test runner script
 ./run_tests.sh
+
+# Run a specific test file
+./run_tests.sh test_event_emitter
 ```
 
 ### Integration Tests
@@ -48,7 +51,7 @@ We welcome contributions to `ida-taskr`! Whether it's bug fixes, new features, o
 
 1. **Fork the Repository** and clone it locally. 🍴
 2. **Make Your Changes** in a new branch. 🌿
-3. **Run Tests** to ensure everything works (`python3 -m unittest discover -s tests/`). 🧪
+3. **Run Tests** to ensure everything works (`python3 -m unittest discover -s tests/unit/`). 🧪
 4. **Submit a Pull Request** with a clear description of your changes. 📬
 
 Please follow the coding style and include tests for new functionality. Let's make `ida-taskr` even better together! 💪

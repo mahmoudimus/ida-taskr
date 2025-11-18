@@ -61,16 +61,16 @@ esac
 # Check if a specific test is requested
 if [ -n "$TEST_NAME" ]; then
     echo "🎯 Running specific test: $TEST_NAME"
-    echo "   Command: python -m unittest tests.$TEST_NAME -v"
-    TEST_COMMAND="python -m unittest tests.$TEST_NAME -v"
+    echo "   Command: python -m unittest tests.unit.$TEST_NAME -v"
+    TEST_COMMAND="python -m unittest tests.unit.$TEST_NAME -v"
 else
     # Check if TEST_ROUTINE_ADDR is set for anti-deob tests
     if [ -n "$TEST_ROUTINE_ADDR" ]; then
         echo "🎯 Running tests for specific address: $TEST_ROUTINE_ADDR"
-        echo "   Command: python -m unittest tests.test_anti_deob -v"
-        TEST_COMMAND="python -m unittest tests.test_anti_deob -v"
+        echo "   Command: python -m unittest tests.unit.test_anti_deob -v"
+        TEST_COMMAND="python -m unittest tests.unit.test_anti_deob -v"
     else
-        echo "🔄 Running all tests"
+        echo "🔄 Running all unit tests"
         echo "   To run tests for a specific address, set TEST_ROUTINE_ADDR:"
         echo "   export TEST_ROUTINE_ADDR=0x141887cbd  # hex format"
         echo "   export TEST_ROUTINE_ADDR=5394431165   # decimal format"
@@ -80,8 +80,8 @@ else
         echo "   ./run_tests.sh test_task_runner"
         echo
         echo "   For help: ./run_tests.sh --help"
-        # Only run top-level test files, exclude integration subdirectory (uses pytest)
-        TEST_COMMAND="python -m unittest discover -s tests -p 'test_*.py' -t ."
+        # Run unit tests only (integration tests use pytest)
+        TEST_COMMAND="python -m unittest discover -s tests/unit -p 'test_*.py' -t ."
     fi
 fi
 
