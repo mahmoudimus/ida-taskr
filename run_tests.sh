@@ -80,7 +80,8 @@ else
         echo "   ./run_tests.sh test_task_runner"
         echo
         echo "   For help: ./run_tests.sh --help"
-        TEST_COMMAND="python -m unittest discover tests"
+        # Only run top-level test files, exclude integration subdirectory (uses pytest)
+        TEST_COMMAND="python -m unittest discover -s tests -p 'test_*.py' -t ."
     fi
 fi
 
