@@ -10,23 +10,7 @@ The integration tests verify that IDA Taskr's Qt-based process management and th
 
 ### Prerequisites
 
-Install system dependencies (Ubuntu/Debian):
-
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-    libgl1-mesa-glx \
-    libgl1-mesa-dev \
-    libegl1 \
-    libxkbcommon-x11-0 \
-    libxcb-icccm4 \
-    libxcb-image0 \
-    libxcb-keysyms1 \
-    libxcb-randr0 \
-    libxcb-render-util0 \
-    libxcb-xinerama0 \
-    libxcb-xfixes0
-```
+No system dependencies required - Qt Core works headless without graphics libraries.
 
 ### Running Tests
 
@@ -51,10 +35,9 @@ Integration tests run automatically in GitHub Actions on:
 - Pushes to main
 
 The workflow:
-1. Installs system dependencies (OpenGL, X11 libraries)
-2. Installs Python dependencies including PySide6
-3. Runs integration tests in headless mode with QT_QPA_PLATFORM=offscreen
-4. Uploads coverage reports
+1. Installs Python dependencies including PySide6
+2. Runs integration tests in headless mode with QT_QPA_PLATFORM=offscreen
+3. Uploads coverage reports
 
 ## Test Structure
 
@@ -70,11 +53,7 @@ The workflow:
 
 ### Configuration
 
-- `conftest.py` - Pytest fixtures and configuration
-
-### Fixtures
-
-- `qtbot` - pytest-qt fixture for managing QApplication and testing Qt components (provided by pytest-qt plugin)
+- `conftest.py` - Pytest configuration (no special fixtures needed)
 
 ## Adding New Tests
 
@@ -82,7 +61,7 @@ To add new Qt Core integration tests:
 
 1. Add test methods to existing test classes in `test_integration_qt_core.py`
 2. Import PySide6 components at module level
-3. Use the `qtbot` fixture for QApplication management
+3. No special fixtures needed - signals are delivered synchronously
 4. Run tests in headless mode with `QT_QPA_PLATFORM=offscreen`
 
 Example:
@@ -91,7 +70,7 @@ Example:
 from PySide6.QtCore import QObject, Signal
 
 class TestMyNewFeature:
-    def test_custom_signal_handling(self, qtbot):
+    def test_custom_signal_handling(self):
         """Test custom Qt signal handling."""
         class CustomEmitter(QObject):
             my_signal = Signal(int)
@@ -105,27 +84,29 @@ class TestMyNewFeature:
         emitter.my_signal.connect(handler)
         emitter.my_signal.emit(42)
 
-        qtbot.wait(10)
+        # Signals delivered synchronously in same thread
         assert received == [42]
 ```
 
 ## Troubleshooting
 
-### ImportError: libGL.so.1 cannot open shared object file
-
-Install the required system dependencies:
-
-```bash
-sudo apt-get install -y libgl1-mesa-glx libgl1-mesa-dev libegl1
-```
-
 ### Qt Application Errors
 
-Ensure `QT_QPA_PLATFORM=offscreen` is set:
+Ensure `QT_QPA_PLATFORM=offscreen` is set to prevent Qt from trying to connect to a display:
 
 ```bash
 export QT_QPA_PLATFORM=offscreen
 python -m pytest tests/integration/test_integration_qt_core.py -v
+```
+
+### ImportError: No module named 'PySide6'
+
+Install PySide6:
+
+```bash
+pip install PySide6
+# or
+pip install -e .[ci]
 ```
 
 ### Tests Hang

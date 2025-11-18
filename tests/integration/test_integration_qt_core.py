@@ -24,14 +24,14 @@ class TestQtCoreFramework:
         assert QProcess is not None
         assert Signal is not None
 
-    def test_qprocess_available(self, qtbot):
+    def test_qprocess_available(self):
         """Test that QProcess is available for process management."""
         # Create a simple QProcess
         process = QProcess()
         assert process is not None
         assert process.state() == QProcess.NotRunning
 
-    def test_qthread_available(self, qtbot):
+    def test_qthread_available(self):
         """Test that QThread is available for threading."""
         class TestThread(QThread):
             finished_signal = Signal()
@@ -43,7 +43,7 @@ class TestQtCoreFramework:
         assert thread is not None
         assert not thread.isRunning()
 
-    def test_signal_slot_mechanism(self, qtbot):
+    def test_signal_slot_mechanism(self):
         """Test Qt signal/slot mechanism in headless mode."""
         class Emitter(QObject):
             test_signal = Signal(str)
@@ -57,9 +57,7 @@ class TestQtCoreFramework:
         emitter.test_signal.connect(handler)
         emitter.test_signal.emit("test_message")
 
-        # Process Qt event loop
-        qtbot.wait(10)
-
+        # Signals are delivered synchronously in same thread
         assert len(received) == 1
         assert received[0] == "test_message"
 
@@ -72,14 +70,14 @@ class TestMessageEmitter:
         from ida_taskr.event_emitter import MessageEmitter
         assert MessageEmitter is not None
 
-    def test_message_emitter_creation(self, qtbot):
+    def test_message_emitter_creation(self):
         """Test MessageEmitter instance creation."""
         from ida_taskr.event_emitter import MessageEmitter
 
         emitter = MessageEmitter()
         assert emitter is not None
 
-    def test_message_emitter_signals(self, qtbot):
+    def test_message_emitter_signals(self):
         """Test MessageEmitter signal emission and reception."""
         from ida_taskr.event_emitter import MessageEmitter
 
@@ -92,13 +90,10 @@ class TestMessageEmitter:
         emitter.message_received.connect(message_handler)
         emitter.emit_message("test_message")
 
-        # Wait for signal processing
-        qtbot.wait(10)
-
         assert len(received_messages) == 1
         assert received_messages[0] == "test_message"
 
-    def test_message_emitter_progress(self, qtbot):
+    def test_message_emitter_progress(self):
         """Test MessageEmitter progress signal."""
         from ida_taskr.event_emitter import MessageEmitter
 
@@ -111,12 +106,10 @@ class TestMessageEmitter:
         emitter.progress_updated.connect(progress_handler)
         emitter.emit_progress(50, 100, "halfway")
 
-        qtbot.wait(10)
-
         assert len(progress_updates) == 1
         assert progress_updates[0] == (50, 100, "halfway")
 
-    def test_message_emitter_results(self, qtbot):
+    def test_message_emitter_results(self):
         """Test MessageEmitter results signal."""
         from ida_taskr.event_emitter import MessageEmitter
 
@@ -129,8 +122,6 @@ class TestMessageEmitter:
         emitter.results_ready.connect(results_handler)
         emitter.emit_results({"data": "test_result"})
 
-        qtbot.wait(10)
-
         assert len(results) == 1
         assert results[0] == {"data": "test_result"}
 
@@ -138,7 +129,7 @@ class TestMessageEmitter:
 class TestQProcessBasics:
     """Test QProcess basic functionality for worker launching."""
 
-    def test_qprocess_simple_execution(self, qtbot):
+    def test_qprocess_simple_execution(self):
         """Test QProcess can execute a simple command."""
         process = QProcess()
 
@@ -157,7 +148,7 @@ class TestQProcessBasics:
         assert process.exitStatus() == QProcess.NormalExit
         assert process.exitCode() == 0
 
-    def test_qprocess_output_capture(self, qtbot):
+    def test_qprocess_output_capture(self):
         """Test QProcess can capture output from subprocess."""
         process = QProcess()
         process.start("python3", ["-c", "print('hello world')"])
@@ -168,7 +159,7 @@ class TestQProcessBasics:
         output = process.readAllStandardOutput().data().decode('utf-8').strip()
         assert "hello world" in output
 
-    def test_qprocess_error_detection(self, qtbot):
+    def test_qprocess_error_detection(self):
         """Test QProcess error detection for invalid command."""
         process = QProcess()
 
@@ -215,7 +206,7 @@ class TestTaskRunnerQtIntegration:
         from ida_taskr import TaskRunner
         assert TaskRunner is not None
 
-    def test_taskrunner_creation_with_qt(self, qtbot):
+    def test_taskrunner_creation_with_qt(self):
         """Test TaskRunner instance creation with Qt framework."""
         from ida_taskr import TaskRunner
 
@@ -225,7 +216,7 @@ class TestTaskRunnerQtIntegration:
         assert hasattr(runner, 'launcher')
         assert hasattr(runner, 'message_emitter')
 
-    def test_taskrunner_message_emitter_type(self, qtbot):
+    def test_taskrunner_message_emitter_type(self):
         """Test that TaskRunner uses MessageEmitter."""
         from ida_taskr import TaskRunner
         from ida_taskr.event_emitter import MessageEmitter
@@ -233,7 +224,7 @@ class TestTaskRunnerQtIntegration:
         runner = TaskRunner()
         assert isinstance(runner.message_emitter, MessageEmitter)
 
-    def test_taskrunner_launcher_type(self, qtbot):
+    def test_taskrunner_launcher_type(self):
         """Test that TaskRunner uses WorkerLauncher."""
         from ida_taskr import TaskRunner
         from ida_taskr.launcher import WorkerLauncher
@@ -269,7 +260,7 @@ class TestQProcessEnvironment:
 class TestQtSignalsAdvanced:
     """Test advanced Qt signal/slot patterns used by ida-taskr."""
 
-    def test_cross_thread_signals(self, qtbot):
+    def test_cross_thread_signals(self):
         """Test signals can be emitted across thread boundaries."""
         class Worker(QThread):
             finished_with_data = Signal(str)
@@ -288,12 +279,11 @@ class TestQtSignalsAdvanced:
 
         # Wait for thread to complete
         worker.wait(5000)
-        qtbot.wait(10)
 
         assert len(received) == 1
         assert received[0] == "thread_completed"
 
-    def test_multiple_signal_handlers(self, qtbot):
+    def test_multiple_signal_handlers(self):
         """Test multiple handlers can be connected to the same signal."""
         class Emitter(QObject):
             data_ready = Signal(int)
@@ -311,12 +301,10 @@ class TestQtSignalsAdvanced:
         emitter.data_ready.connect(handler2)
         emitter.data_ready.emit(42)
 
-        qtbot.wait(10)
-
         assert results["handler1"] == [42]
         assert results["handler2"] == [84]
 
-    def test_signal_disconnection(self, qtbot):
+    def test_signal_disconnection(self):
         """Test signal handlers can be disconnected."""
         class Emitter(QObject):
             data_signal = Signal(str)
@@ -330,12 +318,8 @@ class TestQtSignalsAdvanced:
         emitter.data_signal.connect(handler)
         emitter.data_signal.emit("first")
 
-        qtbot.wait(10)
-
         emitter.data_signal.disconnect(handler)
         emitter.data_signal.emit("second")
-
-        qtbot.wait(10)
 
         # Only first message should be received
         assert len(received) == 1
