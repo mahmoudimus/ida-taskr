@@ -49,6 +49,29 @@ if QT_API is None:
     )
 
 
+# PyQt6 compatibility: In PyQt6, enums are nested in classes
+# (e.g., QProcess.ProcessState.NotRunning vs QProcess.NotRunning)
+# Add compatibility attributes for easier access
+if QT_API == "PyQt6":
+    # QProcess enums
+    if hasattr(QtCore.QProcess, 'ProcessState'):
+        QtCore.QProcess.NotRunning = QtCore.QProcess.ProcessState.NotRunning
+        QtCore.QProcess.Starting = QtCore.QProcess.ProcessState.Starting
+        QtCore.QProcess.Running = QtCore.QProcess.ProcessState.Running
+
+    if hasattr(QtCore.QProcess, 'ProcessError'):
+        QtCore.QProcess.FailedToStart = QtCore.QProcess.ProcessError.FailedToStart
+        QtCore.QProcess.Crashed = QtCore.QProcess.ProcessError.Crashed
+        QtCore.QProcess.Timedout = QtCore.QProcess.ProcessError.Timedout
+        QtCore.QProcess.ReadError = QtCore.QProcess.ProcessError.ReadError
+        QtCore.QProcess.WriteError = QtCore.QProcess.ProcessError.WriteError
+        QtCore.QProcess.UnknownError = QtCore.QProcess.ProcessError.UnknownError
+
+    if hasattr(QtCore.QProcess, 'ExitStatus'):
+        QtCore.QProcess.NormalExit = QtCore.QProcess.ExitStatus.NormalExit
+        QtCore.QProcess.CrashExit = QtCore.QProcess.ExitStatus.CrashExit
+
+
 def get_qt_api():
     """Return the name of the Qt API being used."""
     return QT_API
