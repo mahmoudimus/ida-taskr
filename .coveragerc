@@ -1,0 +1,16 @@
+[run]
+branch = True
+source = src/ida_taskr
+omit =
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */site-packages/*
+
+[report]
+precision = 2
+show_missing = True
+skip_covered = False
+
+[html]
+directory = htmlcov

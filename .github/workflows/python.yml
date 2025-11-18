@@ -33,15 +33,121 @@ jobs:
               with:
                   persist-credentials: false
 
-            - name: Set up Python${{ matrix.python-version }}
+            - name: Set up Python ${{ matrix.python-version }}
               uses: actions/setup-python@v5
               with:
                   python-version: ${{ matrix.python-version }}
                   cache: pip
+
             - name: Install dependencies
               run: |
                   pip install --upgrade pip setuptools wheel uv
                   uv pip install --system -e .
+
             - name: Python unit tests
               run: |
                   ./run_tests.sh
+
+    ida-integration-tests:
+        runs-on: ubuntu-24.04
+        strategy:
+            matrix:
+                ida-version: ["9.1", "9.2"]
+                include:
+                    - ida-version: "9.1"
+                      qt-framework: "PyQt5"
+                      docker-service: "idapro-tests-91"
+                      docker-image: "ghcr.io/mahmoudimus/idapro-linux:baked"
+                    - ida-version: "9.2"
+                      qt-framework: "PySide6"
+                      docker-service: "idapro-tests-92"
+                      docker-image: "ghcr.io/mahmoudimus/idapro-linux:9.2-pyside6"
+        env:
+            PYTHONPATH: ${{ github.workspace }}
+
+        steps:
+            - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"
+              uses: actions/checkout@v4
+              with:
+                  persist-credentials: false
+
+            - name: Set up Python 3.11
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+                  cache: pip
+
+            - name: Install CI dependencies
+              run: |
+                  pip install --upgrade pip setuptools wheel uv
+                  uv pip install --system -e ".[ci]"
+
+            - name: Login to GitHub Container Registry
+              uses: docker/login-action@v3
+              with:
+                  registry: ghcr.io
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Restore Docker image cache
+              id: docker-cache
+              uses: actions/cache@v4
+              with:
+                  path: /tmp/docker-images
+                  key: docker-${{ matrix.ida-version }}-${{ hashFiles('docker-compose.yml') }}-${{ github.run_id }}
+                  restore-keys: |
+                      docker-${{ matrix.ida-version }}-${{ hashFiles('docker-compose.yml') }}-
+                      docker-${{ matrix.ida-version }}-
+
+            - name: Load cached Docker images
+              if: steps.docker-cache.outputs.cache-hit == 'true'
+              run: |
+                  if [ -f /tmp/docker-images/${{ matrix.docker-service }}.tar ]; then
+                      docker load -i /tmp/docker-images/${{ matrix.docker-service }}.tar
+                  fi
+
+            - name: Pull Docker images
+              run: |
+                  docker compose pull ${{ matrix.docker-service }}
+
+            - name: Create output directory
+              run: |
+                  mkdir -p tests/out
+
+            - name: Generate test binaries
+              run: |
+                  sudo apt-get update && sudo apt-get install -y gcc binutils
+                  chmod +x scripts/generate_test_binary.sh
+                  ./scripts/generate_test_binary.sh
+
+            - name: Run IDA ${{ matrix.ida-version }} (${{ matrix.qt-framework }}) integration tests
+              run: |
+                  docker compose run --rm ${{ matrix.docker-service }}
+
+            - name: Save Docker images to cache
+              if: steps.docker-cache.outputs.cache-hit != 'true'
+              run: |
+                  mkdir -p /tmp/docker-images
+                  # Get the image SHA from GitHub API
+                  IMAGE_SHA=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                      "https://api.github.com/users/${{ github.repository_owner }}/packages/container/idapro-linux/versions" | \
+                      jq -r '.[] | select(.metadata.container.tags[] | contains("${{ matrix.ida-version }}")) | .name' | head -1)
+                  if [ -n "$IMAGE_SHA" ]; then
+                      docker save "${{ matrix.docker-image }}" -o /tmp/docker-images/${{ matrix.docker-service }}.tar
+                  fi
+
+            - name: Upload test artifacts
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: test-artifacts-ida-${{ matrix.ida-version }}
+                  path: tests/out/
+                  retention-days: 7
+
+            - name: Upload coverage reports
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: coverage-ida-${{ matrix.ida-version }}
+                  path: htmlcov/
+                  retention-days: 7

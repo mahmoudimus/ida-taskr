@@ -1,0 +1,57 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cursor/
+
+# CI/CD
+.github/
+
+# Test outputs
+htmlcov/
+.coverage
+.coverage.*
+.pytest_cache/
+.tox/
+tests/out/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Documentation
+docs/
+*.md
+!tests/_resources/**
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.log
+.cache/

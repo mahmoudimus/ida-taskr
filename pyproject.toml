@@ -7,6 +7,13 @@ name = "ida-taskr"
 version = "0.1.0"
 description = "IDA task runner"
 
+[project.optional-dependencies]
+ci = [
+    "pytest>=7.0.0",
+    "pytest-timeout>=2.1.0",
+    "pytest-cov>=4.0.0",
+]
+
 [project.scripts]
 ida-taskr = "ida_taskr:main"
 
@@ -14,3 +21,24 @@ ida-taskr = "ida_taskr:main"
 branch = true
 include = ["tests/*"]
 command_line = "-m unittest discover -s tests/"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+timeout = 300
+
+[tool.coverage.run]
+branch = true
+source = ["src/ida_taskr"]
+omit = [
+    "*/tests/*",
+    "*/test_*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false

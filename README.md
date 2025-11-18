@@ -10,9 +10,38 @@ IDA Taskr is a pure Python library for IDA Pro related parallel computing. It le
 
 `ida-taskr` is thoroughly tested to ensure reliability.
 
+### Unit Tests
+
+Run unit tests locally:
+
 ```bash
+# Run all unit tests
 python3 -m unittest discover -s tests/
+
+# Or use the test runner script
+./run_tests.sh
 ```
+
+### Integration Tests
+
+Integration tests verify IDA Taskr works with real IDA Pro installations, supporting both:
+- **IDA Pro 9.1** with PyQt5
+- **IDA Pro 9.2** with PySide6
+
+Run integration tests using Docker:
+
+```bash
+# Run tests for IDA 9.1 (PyQt5)
+docker compose run --rm idapro-tests-91
+
+# Run tests for IDA 9.2 (PySide6)
+docker compose run --rm idapro-tests-92
+
+# Run both versions
+docker compose run --rm idapro-tests-91 && docker compose run --rm idapro-tests-92
+```
+
+For more details, see [Integration Test Documentation](tests/integration/README.md).
 
 You'll see detailed output confirming the functionality of each component. ✅
 
