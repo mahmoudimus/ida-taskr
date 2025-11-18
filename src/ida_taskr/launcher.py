@@ -15,62 +15,58 @@ logger = get_logger()
 # Try to import Qt - gracefully handle if not available
 QT_AVAILABLE = False
 QtCore = None
+Signal = None
 QProcessEnvironment = None
 
 try:
-    from PyQt5 import QtCore  # type: ignore
-    from PyQt5.QtCore import QProcessEnvironment
+    from .qt_compat import QtCore, Signal
+    from .qt_compat import QtCore as QtCoreModule  # To access QtCore.QProcessEnvironment
+    QProcessEnvironment = QtCoreModule.QProcessEnvironment
     QT_AVAILABLE = True
 except ImportError:
-    try:
-        from PySide6 import QtCore  # type: ignore
-        from PySide6.QtCore import QProcessEnvironment
-        QT_AVAILABLE = True
-    except ImportError:
-        # Qt not available - create mock base classes for import compatibility
-        class QtCore:  # type: ignore
-            class QThread:
-                def __init__(self, *args, **kwargs):
-                    raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
-
-            class QObject:
-                def __init__(self, *args, **kwargs):
-                    raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
-
-            class QProcess:
-                # Process error enum values (mock)
-                class ProcessError:
-                    FailedToStart = 0
-                    Crashed = 1
-                    Timedout = 2
-                    WriteError = 4
-                    ReadError = 3
-                    UnknownError = 5
-
-                # Process state enum values (mock)
-                class ProcessState:
-                    NotRunning = 0
-                    Starting = 1
-                    Running = 2
-
-                def __init__(self, *args, **kwargs):
-                    raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
-
-            class QSocketNotifier:
-                Read = 1
-                Write = 2
-
-                def __init__(self, *args, **kwargs):
-                    raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
-
-            # Dummy signal for type hints
-            pyqtSignal = lambda *args: None
-            Signal = lambda *args: None
-
-        class QProcessEnvironment:  # type: ignore
-            @staticmethod
-            def systemEnvironment():
+    # Qt not available - create mock base classes for import compatibility
+    class QtCore:  # type: ignore
+        class QThread:
+            def __init__(self, *args, **kwargs):
                 raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
+
+        class QObject:
+            def __init__(self, *args, **kwargs):
+                raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
+
+        class QProcess:
+            # Process error enum values (mock)
+            class ProcessError:
+                FailedToStart = 0
+                Crashed = 1
+                Timedout = 2
+                WriteError = 4
+                ReadError = 3
+                UnknownError = 5
+
+            # Process state enum values (mock)
+            class ProcessState:
+                NotRunning = 0
+                Starting = 1
+                Running = 2
+
+            def __init__(self, *args, **kwargs):
+                raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
+
+        class QSocketNotifier:
+            Read = 1
+            Write = 2
+
+            def __init__(self, *args, **kwargs):
+                raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
+
+    # Dummy signal for type hints
+    Signal = lambda *args: None
+
+    class QProcessEnvironment:  # type: ignore
+        @staticmethod
+        def systemEnvironment():
+            raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
 
 
 class TemporarilyDisableNotifier:
@@ -93,8 +89,8 @@ class TemporarilyDisableNotifier:
 class ConnectionReader(QtCore.QThread):
     """Qt thread for reading messages from worker connection."""
 
-    message_received = QtCore.pyqtSignal(object)
-    connection_closed = QtCore.pyqtSignal()
+    message_received = Signal(object)
+    connection_closed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -126,8 +122,8 @@ class QtListener(QtCore.QObject):
     """Qt-friendly wrapper for multiprocessing.connection.Listener."""
 
     family = "AF_INET"
-    connection_accepted = QtCore.pyqtSignal(object)
-    connection_error = QtCore.pyqtSignal(str)
+    connection_accepted = Signal(object)
+    connection_error = Signal(str)
 
     def __init__(self, address=None, backlog=1, authkey=None, parent=None):
         super().__init__(parent)
@@ -176,11 +172,11 @@ class WorkerLauncher(QtCore.QProcess):
     """
 
     # Signals
-    processing_results = QtCore.pyqtSignal(dict)
-    error_occurred_msg = QtCore.pyqtSignal(str)
-    worker_message = QtCore.pyqtSignal(object)
-    worker_connected = QtCore.pyqtSignal()
-    worker_disconnected = QtCore.pyqtSignal()
+    processing_results = Signal(dict)
+    error_occurred_msg = Signal(str)
+    worker_message = Signal(object)
+    worker_connected = Signal()
+    worker_disconnected = Signal()
 
     def __init__(self, message_emitter: MessageEmitter | None = None, parent=None):
         super(WorkerLauncher, self).__init__(parent)

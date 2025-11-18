@@ -1,7 +1,7 @@
 """Integration tests for Qt Core functionality without IDA Pro requirement.
 
 These tests verify that ida-taskr's Qt-based process management and threading
-work correctly in headless mode. Uses PySide6 which is installed via pip.
+work correctly in headless mode with PyQt5, PyQt6, or PySide6.
 """
 
 import sys
@@ -10,7 +10,15 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QObject, QThread, QProcess, Signal, QProcessEnvironment
+
+# Import from qt_compat to get the unified Signal/Slot API
+from ida_taskr.qt_compat import QtCore, Signal, QT_API
+
+# Import Qt Core components
+QObject = QtCore.QObject
+QThread = QtCore.QThread
+QProcess = QtCore.QProcess
+QProcessEnvironment = QtCore.QProcessEnvironment
 
 
 class TestQtCoreFramework:

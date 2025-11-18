@@ -12,8 +12,10 @@ ci = [
     "pytest>=7.0.0",
     "pytest-timeout>=2.1.0",
     "pytest-cov>=4.0.0",
-    "PySide6>=6.0.0",
 ]
+pyqt5 = ["PyQt5>=5.15.0"]
+pyqt6 = ["PyQt6>=6.0.0"]
+pyside6 = ["PySide6>=6.0.0"]
 
 [project.scripts]
 ida-taskr = "ida_taskr:main"
