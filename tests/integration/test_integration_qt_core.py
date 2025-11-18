@@ -291,8 +291,17 @@ class TestQtSignalsAdvanced:
         # Wait for thread to complete
         worker.wait(5000)
 
-        # Small delay to let signal propagate (cross-thread signals are queued)
-        time.sleep(0.05)
+        # Cross-thread signals are queued and need event processing
+        # Process pending events to deliver the queued signal
+        if hasattr(QtCore, 'QCoreApplication'):
+            app = QtCore.QCoreApplication.instance()
+            if app is None:
+                # Create temporary app if none exists
+                app = QtCore.QCoreApplication([])
+            # Process all pending events
+            app.processEvents()
+            time.sleep(0.01)
+            app.processEvents()
 
         assert len(received) == 1
         assert received[0] == "thread_completed"
