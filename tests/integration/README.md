@@ -30,14 +30,17 @@ docker compose run --rm idapro-tests && docker compose run --rm idapro-tests-9.2
 To run specific test files or test cases:
 
 ```bash
-# Run a specific test file (IDA 9.1)
-docker compose run --rm --entrypoint bash idapro-tests -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_taskrunner.py -v"
+# Run Qt Core tests only (no IDA required, faster)
+docker compose run --rm --entrypoint bash idapro-tests -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_qt_core.py -v"
+
+# Run IDA-specific tests only
+docker compose run --rm --entrypoint bash idapro-tests -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_ida.py -v"
 
 # Run a specific test class (IDA 9.2)
-docker compose run --rm --entrypoint bash idapro-tests-9.2 -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_taskrunner.py::TestTaskRunnerIntegration -v"
+docker compose run --rm --entrypoint bash idapro-tests-9.2 -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_ida.py::TestTaskRunnerIntegration -v"
 
 # Run a specific test method
-docker compose run --rm --entrypoint bash idapro-tests -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_taskrunner.py::TestTaskRunnerIntegration::test_ida_import -v"
+docker compose run --rm --entrypoint bash idapro-tests -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_qt_core.py::TestQtCoreFramework::test_qt_framework_import -v"
 ```
 
 ## CI/CD
@@ -56,18 +59,34 @@ The workflow:
 
 ### Test Files
 
-- `test_integration_taskrunner.py` - Tests for TaskRunner functionality in IDA environment
+Integration tests are organized into two categories:
+
+#### Qt Core Tests (No IDA Required)
+- `test_integration_qt_core.py` - Tests for Qt Core functionality (QProcess, QThread, signals/slots)
+  - Tests WorkerLauncher, MessageEmitter, and Qt-based process management
+  - Runs in headless mode with both PyQt5 and PySide6
+  - Does not require IDA Pro - only Qt framework
+
+#### IDA Pro Tests (Require IDA)
+- `test_integration_ida.py` - Tests for TaskRunner functionality in IDA environment
 - `test_integration_ida_analysis.py` - Tests for IDA analysis capabilities
+  - Require actual IDA Pro installation
+  - Test IDA API access and binary analysis
+
+### Configuration
+
 - `conftest.py` - Pytest fixtures and configuration
 
 ### Fixtures
 
 - `ida_available` - Checks if IDA Pro is available
-- `qt_framework` - Determines which Qt framework is available (PyQt5 or PySide6)
+- `qt_framework` - Determines which Qt framework is available (PyQt5 or PySide6) in IDA GUI mode
+- `qt_framework_headless` - Determines Qt framework without requiring IDA GUI mode
 - `test_binary` - Provides a test binary for analysis
 - `temp_idb` - Creates a temporary IDA database
 - `ida_database` - Opens and analyzes an IDA database
 - `output_dir` - Provides path to output directory for test artifacts
+- `qtbot` - pytest-qt fixture for managing QApplication and testing Qt components
 
 ## Adding New Tests
 

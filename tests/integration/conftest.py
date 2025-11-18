@@ -21,6 +21,29 @@ def ida_available():
 
 
 @pytest.fixture(scope="session")
+def qt_framework_headless():
+    """Determine which Qt framework is available (PyQt5 or PySide6).
+
+    Works in both GUI and headless mode. For Qt Core testing without IDA.
+    """
+    # Try to import Qt frameworks
+    try:
+        import PyQt5
+        return "PyQt5"
+    except (ImportError, NotImplementedError):
+        pass
+
+    try:
+        import PySide6
+        return "PySide6"
+    except (ImportError, NotImplementedError):
+        pass
+
+    pytest.skip("No Qt framework available (PyQt5 or PySide6)")
+    return None
+
+
+@pytest.fixture(scope="session")
 def qt_framework():
     """Determine which Qt framework is available (PyQt5 or PySide6).
 
