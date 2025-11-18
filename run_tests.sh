@@ -81,7 +81,7 @@ else
         echo
         echo "   For help: ./run_tests.sh --help"
         # Run unit tests only (integration tests use pytest)
-        TEST_COMMAND="python -m unittest discover -s tests/unit -p 'test_*.py' -t ."
+        TEST_COMMAND="python -m unittest discover -s tests/unit -p test_*.py -t ."
     fi
 fi
 
