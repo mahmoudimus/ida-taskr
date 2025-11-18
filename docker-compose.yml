@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # IDA Pro 9.1 (PyQt5) - Development service
   idapro-91:
@@ -48,14 +46,20 @@ services:
       - LIBGL_ALWAYS_INDIRECT=0
       - IDA_USER_DIR=/ida/user
       - QT_QPA_PLATFORM=offscreen
-      - PYTHONPATH=/opt/ida/python/3:/workspace
+      - PYTHONPATH=/workspace
     volumes:
       - ./src:/workspace/src:ro
       - ./tests:/workspace/tests:ro
       - ./examples:/workspace/examples:ro
       - ./tests/out:/workspace/tests/out
     working_dir: /workspace
-    command: /opt/ida/python/3/bin/python3 -m pytest tests/integration/ -v --tb=short
+    entrypoint: []
+    command:
+      - /bin/bash
+      - -c
+      - |
+        python3 -m pip install --quiet pytest pytest-timeout pytest-cov 2>/dev/null || true
+        python3 -m pytest tests/integration/ -v --tb=short
 
   # IDA Pro 9.2 test runner - Uses 9.2-specific image
   idapro-tests-92:
@@ -66,14 +70,20 @@ services:
       - LIBGL_ALWAYS_INDIRECT=0
       - IDA_USER_DIR=/ida/user
       - QT_QPA_PLATFORM=offscreen
-      - PYTHONPATH=/opt/ida/python/3:/workspace
+      - PYTHONPATH=/workspace
     volumes:
       - ./src:/workspace/src:ro
       - ./tests:/workspace/tests:ro
       - ./examples:/workspace/examples:ro
       - ./tests/out:/workspace/tests/out
     working_dir: /workspace
-    command: /opt/ida/python/3/bin/python3 -m pytest tests/integration/ -v --tb=short
+    entrypoint: []
+    command:
+      - /bin/bash
+      - -c
+      - |
+        python3 -m pip install --quiet pytest pytest-timeout pytest-cov 2>/dev/null || true
+        python3 -m pytest tests/integration/ -v --tb=short
 
 volumes:
   ida-user-91:
