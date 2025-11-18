@@ -24,9 +24,9 @@ python3 -m unittest discover -s tests/
 
 ### Integration Tests
 
-Integration tests verify IDA Taskr works with real IDA Pro installations, supporting both:
-- **IDA Pro 9.1** with PyQt5
-- **IDA Pro 9.2** with PySide6
+Integration tests verify IDA Taskr works with real IDA Pro installations, supporting:
+- **IDA Pro 9.1** with PyQt5 ✅ (currently active in CI)
+- **IDA Pro 9.2** with PySide6 🚧 (ready, Docker image coming soon)
 
 Run integration tests using Docker:
 
@@ -34,11 +34,8 @@ Run integration tests using Docker:
 # Run tests for IDA 9.1 (PyQt5)
 docker compose run --rm idapro-tests-91
 
-# Run tests for IDA 9.2 (PySide6)
+# Run tests for IDA 9.2 (PySide6) - when Docker image is available
 docker compose run --rm idapro-tests-92
-
-# Run both versions
-docker compose run --rm idapro-tests-91 && docker compose run --rm idapro-tests-92
 ```
 
 For more details, see [Integration Test Documentation](tests/integration/README.md).

@@ -52,16 +52,19 @@ jobs:
         runs-on: ubuntu-24.04
         strategy:
             matrix:
-                ida-version: ["9.1", "9.2"]
+                # Note: IDA 9.2 support is ready but Docker image not yet published
+                # Uncomment the line below and the 9.2 include section when image is available
+                ida-version: ["9.1"]  # , "9.2"]
                 include:
                     - ida-version: "9.1"
                       qt-framework: "PyQt5"
                       docker-service: "idapro-tests-91"
                       docker-image: "ghcr.io/mahmoudimus/idapro-linux:baked"
-                    - ida-version: "9.2"
-                      qt-framework: "PySide6"
-                      docker-service: "idapro-tests-92"
-                      docker-image: "ghcr.io/mahmoudimus/idapro-linux:9.2-pyside6"
+                    # Uncomment when IDA 9.2 Docker image is published:
+                    # - ida-version: "9.2"
+                    #   qt-framework: "PySide6"
+                    #   docker-service: "idapro-tests-92"
+                    #   docker-image: "ghcr.io/mahmoudimus/idapro-linux:9.2-pyside6"
         env:
             PYTHONPATH: ${{ github.workspace }}
 

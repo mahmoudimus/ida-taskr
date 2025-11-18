@@ -5,8 +5,8 @@ This directory contains integration tests for IDA Taskr that run against real ID
 ## Overview
 
 The integration tests verify that IDA Taskr works correctly with actual IDA Pro installations, including:
-- IDA Pro 9.1 with PyQt5
-- IDA Pro 9.2 with PySide6
+- IDA Pro 9.1 with PyQt5 ✅ (currently active in CI)
+- IDA Pro 9.2 with PySide6 🚧 (ready, waiting for Docker image to be published)
 
 ## Running Tests Locally
 
