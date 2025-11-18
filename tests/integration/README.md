@@ -5,8 +5,8 @@ This directory contains integration tests for IDA Taskr that run against real ID
 ## Overview
 
 The integration tests verify that IDA Taskr works correctly with actual IDA Pro installations, including:
-- IDA Pro 9.1 with PyQt5 ✅ (currently active in CI)
-- IDA Pro 9.2 with PySide6 🚧 (ready, waiting for Docker image to be published)
+- **IDA Pro 9.1** with PyQt5 ✅
+- **IDA Pro 9.2** with PySide6 ✅
 
 ## Running Tests Locally
 
@@ -16,13 +16,13 @@ The easiest way to run integration tests is using Docker Compose:
 
 ```bash
 # Run tests for IDA 9.1 (PyQt5)
-docker compose run --rm idapro-tests-91
+docker compose run --rm idapro-tests
 
 # Run tests for IDA 9.2 (PySide6)
-docker compose run --rm idapro-tests-92
+docker compose run --rm idapro-tests-9.2
 
 # Run both in sequence
-docker compose run --rm idapro-tests-91 && docker compose run --rm idapro-tests-92
+docker compose run --rm idapro-tests && docker compose run --rm idapro-tests-9.2
 ```
 
 ### Running Specific Tests
@@ -30,14 +30,14 @@ docker compose run --rm idapro-tests-91 && docker compose run --rm idapro-tests-
 To run specific test files or test cases:
 
 ```bash
-# Run a specific test file
-docker compose run --rm idapro-tests-91 /opt/ida/python/3/bin/python3 -m pytest tests/integration/test_integration_taskrunner.py -v
+# Run a specific test file (IDA 9.1)
+docker compose run --rm --entrypoint bash idapro-tests -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_taskrunner.py -v"
 
-# Run a specific test class
-docker compose run --rm idapro-tests-91 /opt/ida/python/3/bin/python3 -m pytest tests/integration/test_integration_taskrunner.py::TestTaskRunnerIntegration -v
+# Run a specific test class (IDA 9.2)
+docker compose run --rm --entrypoint bash idapro-tests-9.2 -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_taskrunner.py::TestTaskRunnerIntegration -v"
 
 # Run a specific test method
-docker compose run --rm idapro-tests-91 /opt/ida/python/3/bin/python3 -m pytest tests/integration/test_integration_taskrunner.py::TestTaskRunnerIntegration::test_ida_import -v
+docker compose run --rm --entrypoint bash idapro-tests -c "pip install -e .[ci] && python -m pytest tests/integration/test_integration_taskrunner.py::TestTaskRunnerIntegration::test_ida_import -v"
 ```
 
 ## CI/CD
