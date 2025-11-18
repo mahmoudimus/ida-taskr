@@ -18,7 +18,8 @@ class TestTaskRunnerIntegration:
         import idc
 
         # Verify we can access basic IDA functionality
-        assert hasattr(idaapi, 'get_inf_structure')
+        # Support both old (get_inf) and new (get_inf_structure) API
+        assert hasattr(idaapi, 'get_inf_structure') or hasattr(idaapi, 'get_inf')
 
     def test_qt_framework_available(self, qt_framework):
         """Test that a Qt framework is available."""

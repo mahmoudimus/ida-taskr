@@ -46,7 +46,7 @@ services:
       - LIBGL_ALWAYS_INDIRECT=0
       - IDA_USER_DIR=/ida/user
       - QT_QPA_PLATFORM=offscreen
-      - PYTHONPATH=/workspace
+      - PYTHONPATH=/workspace/src:/workspace
     volumes:
       - ./src:/workspace/src:ro
       - ./tests:/workspace/tests:ro
@@ -70,7 +70,7 @@ services:
       - LIBGL_ALWAYS_INDIRECT=0
       - IDA_USER_DIR=/ida/user
       - QT_QPA_PLATFORM=offscreen
-      - PYTHONPATH=/workspace
+      - PYTHONPATH=/workspace/src:/workspace
     volumes:
       - ./src:/workspace/src:ro
       - ./tests:/workspace/tests:ro
