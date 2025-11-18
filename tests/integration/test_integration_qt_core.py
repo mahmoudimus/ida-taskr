@@ -75,60 +75,60 @@ class TestMessageEmitter:
 
     def test_message_emitter_import(self):
         """Test that MessageEmitter can be imported."""
-        from ida_taskr.event_emitter import MessageEmitter
+        from ida_taskr.protocols import MessageEmitter
         assert MessageEmitter is not None
 
     def test_message_emitter_creation(self):
         """Test MessageEmitter instance creation."""
-        from ida_taskr.event_emitter import MessageEmitter
+        from ida_taskr.protocols import MessageEmitter
 
         emitter = MessageEmitter()
         assert emitter is not None
 
     def test_message_emitter_signals(self):
         """Test MessageEmitter signal emission and reception."""
-        from ida_taskr.event_emitter import MessageEmitter
+        from ida_taskr.protocols import MessageEmitter
 
         emitter = MessageEmitter()
         received_messages = []
 
+        @emitter.on('worker_message')
         def message_handler(msg):
             received_messages.append(msg)
 
-        emitter.message_received.connect(message_handler)
-        emitter.emit_message("test_message")
+        emitter.emit_worker_message("test_message")
 
         assert len(received_messages) == 1
         assert received_messages[0] == "test_message"
 
     def test_message_emitter_progress(self):
-        """Test MessageEmitter progress signal."""
-        from ida_taskr.event_emitter import MessageEmitter
+        """Test MessageEmitter progress-like events."""
+        from ida_taskr.protocols import MessageEmitter
 
         emitter = MessageEmitter()
-        progress_updates = []
+        received = []
 
-        def progress_handler(current, total, message):
-            progress_updates.append((current, total, message))
+        @emitter.on('worker_message')
+        def handler(msg):
+            received.append(msg)
 
-        emitter.progress_updated.connect(progress_handler)
-        emitter.emit_progress(50, 100, "halfway")
+        emitter.emit_worker_message({"type": "progress", "current": 50, "total": 100})
 
-        assert len(progress_updates) == 1
-        assert progress_updates[0] == (50, 100, "halfway")
+        assert len(received) == 1
+        assert received[0]["type"] == "progress"
 
     def test_message_emitter_results(self):
         """Test MessageEmitter results signal."""
-        from ida_taskr.event_emitter import MessageEmitter
+        from ida_taskr.protocols import MessageEmitter
 
         emitter = MessageEmitter()
         results = []
 
+        @emitter.on('worker_results')
         def results_handler(result):
             results.append(result)
 
-        emitter.results_ready.connect(results_handler)
-        emitter.emit_results({"data": "test_result"})
+        emitter.emit_worker_results({"data": "test_result"})
 
         assert len(results) == 1
         assert results[0] == {"data": "test_result"}
@@ -218,8 +218,8 @@ class TestTaskRunnerQtIntegration:
         """Test TaskRunner instance creation with Qt framework."""
         from ida_taskr import TaskRunner
 
-        # Create TaskRunner instance
-        runner = TaskRunner()
+        # Create TaskRunner instance with dummy args
+        runner = TaskRunner("dummy_script.py", ["arg1"])
         assert runner is not None
         assert hasattr(runner, 'launcher')
         assert hasattr(runner, 'message_emitter')
@@ -227,9 +227,9 @@ class TestTaskRunnerQtIntegration:
     def test_taskrunner_message_emitter_type(self):
         """Test that TaskRunner uses MessageEmitter."""
         from ida_taskr import TaskRunner
-        from ida_taskr.event_emitter import MessageEmitter
+        from ida_taskr.protocols import MessageEmitter
 
-        runner = TaskRunner()
+        runner = TaskRunner("dummy_script.py", ["arg1"])
         assert isinstance(runner.message_emitter, MessageEmitter)
 
     def test_taskrunner_launcher_type(self):
@@ -237,7 +237,7 @@ class TestTaskRunnerQtIntegration:
         from ida_taskr import TaskRunner
         from ida_taskr.launcher import WorkerLauncher
 
-        runner = TaskRunner()
+        runner = TaskRunner("dummy_script.py", ["arg1"])
         assert isinstance(runner.launcher, WorkerLauncher)
 
 
@@ -270,10 +270,13 @@ class TestQtSignalsAdvanced:
 
     def test_cross_thread_signals(self):
         """Test signals can be emitted across thread boundaries."""
+        import time
+
         class Worker(QThread):
             finished_with_data = Signal(str)
 
             def run(self):
+                time.sleep(0.01)  # Small delay to ensure thread starts
                 self.finished_with_data.emit("thread_completed")
 
         worker = Worker()
@@ -287,6 +290,9 @@ class TestQtSignalsAdvanced:
 
         # Wait for thread to complete
         worker.wait(5000)
+
+        # Small delay to let signal propagate (cross-thread signals are queued)
+        time.sleep(0.05)
 
         assert len(received) == 1
         assert received[0] == "thread_completed"

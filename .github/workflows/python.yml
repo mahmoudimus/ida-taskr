@@ -42,7 +42,7 @@ jobs:
             - name: Install dependencies
               run: |
                   pip install --upgrade pip setuptools wheel uv
-                  uv pip install --system -e .
+                  uv pip install --system -e .[pyside6]
 
             - name: Python unit tests
               run: |
