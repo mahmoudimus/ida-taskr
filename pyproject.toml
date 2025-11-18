@@ -34,6 +34,10 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
 timeout = 300
+qt_api = "pyside6"
+env = [
+    "QT_QPA_PLATFORM=offscreen",
+]
 
 [tool.coverage.run]
 branch = true
