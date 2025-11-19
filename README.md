@@ -161,18 +161,6 @@ pytest tests/integration/ --cov=src/ida_taskr --cov-report=html
 - ✅ PyQt5 (IDA Pro 9.1)
 - ✅ PySide6 (IDA Pro 9.2+)
 
-### Docker Development Environment
-
-For IDA Pro development, use the provided Docker services:
-
-```bash
-# Start IDA Pro 9.1 (PyQt5)
-docker compose up idapro-91
-
-# Start IDA Pro 9.2 (PySide6)
-docker compose up idapro-92
-```
-
 ## Contributing 🤝
 
 We welcome contributions to `ida-taskr`! Whether it's bug fixes, new features, or documentation improvements, your help is appreciated. Here's how to contribute:
