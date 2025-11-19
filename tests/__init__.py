@@ -1,14 +1,13 @@
-import os
-import pathlib
-import sys
-import unittest
+"""IDA Taskr test suite.
 
-import idapro
+This test suite is organized into two categories:
 
-# Set framework path for IDA Pro
-os.environ["DYLD_FRAMEWORK_PATH"] = (
-    "/Applications/IDA Professional 9.1.app/Contents/Frameworks:"
-    + os.environ.get("DYLD_FRAMEWORK_PATH", "")
-)
+- tests/unit/: Unit tests that use mocks and don't require IDA Pro or Qt
+- tests/integration/: Integration tests that require a real IDA Pro environment
 
-sys.path.append(str(pathlib.Path(__file__).parent.parent))
+To run unit tests:
+    python -m unittest discover -s tests/unit/
+
+To run integration tests:
+    pytest tests/integration/
+"""

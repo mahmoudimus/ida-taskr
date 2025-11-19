@@ -33,15 +33,56 @@ jobs:
               with:
                   persist-credentials: false
 
-            - name: Set up Python${{ matrix.python-version }}
+            - name: Set up Python ${{ matrix.python-version }}
               uses: actions/setup-python@v5
               with:
                   python-version: ${{ matrix.python-version }}
                   cache: pip
+
             - name: Install dependencies
               run: |
                   pip install --upgrade pip setuptools wheel uv
-                  uv pip install --system -e .
+                  uv pip install --system -e .[pyside6]
+
             - name: Python unit tests
               run: |
                   ./run_tests.sh
+
+    qt-integration-tests:
+        runs-on: ubuntu-24.04
+        strategy:
+            matrix:
+                python-version: ["3.10", "3.11"]
+                qt-framework: ["pyqt5", "pyside6"]
+        env:
+            PYTHONPATH: ${{ github.workspace }}
+            QT_QPA_PLATFORM: offscreen
+
+        steps:
+            - name: "Checkout ${{ github.ref }} ( ${{ github.sha }} )"
+              uses: actions/checkout@v4
+              with:
+                  persist-credentials: false
+
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ matrix.python-version }}
+                  cache: pip
+
+            - name: Install Python dependencies
+              run: |
+                  pip install --upgrade pip setuptools wheel
+                  pip install -e .[ci,${{ matrix.qt-framework }}]
+
+            - name: Run Qt Core integration tests
+              run: |
+                  python -m pytest tests/integration/test_integration_qt_core.py -v --tb=short --cov=src/ida_taskr --cov-report=html --cov-report=term
+
+            - name: Upload coverage reports
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: coverage-${{ matrix.qt-framework }}-py${{ matrix.python-version }}
+                  path: htmlcov/
+                  retention-days: 7

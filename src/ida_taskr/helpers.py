@@ -80,7 +80,8 @@ def get_logger(name=None, configurer=None, log_level=logging.INFO, custom_logger
         return custom_logger
     if not configurer:
         configurer = functools.partial(configure_logging, level=log_level)
-    name = name or f"{"ida." if is_ida() else "worker."}{__name__}"
+    prefix = "ida." if is_ida() else "worker."
+    name = name or f"{prefix}{__name__}"
     logger = logging.getLogger(name)
     configurer(logger)
     return logger

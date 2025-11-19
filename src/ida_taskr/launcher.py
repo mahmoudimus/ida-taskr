@@ -7,11 +7,9 @@ import pickle
 import select
 import sys
 
-from PyQt5 import QtCore  # type: ignore
-from PyQt5.QtCore import QProcessEnvironment
-
 from .helpers import MultiprocessingHelper, get_logger
 from .protocols import MessageEmitter
+from .qt_compat import QtCore, Signal, QProcessEnvironment, QT_AVAILABLE
 
 logger = get_logger()
 
@@ -36,8 +34,8 @@ class TemporarilyDisableNotifier:
 class ConnectionReader(QtCore.QThread):
     """Qt thread for reading messages from worker connection."""
 
-    message_received = QtCore.pyqtSignal(object)
-    connection_closed = QtCore.pyqtSignal()
+    message_received = Signal(object)
+    connection_closed = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -69,8 +67,8 @@ class QtListener(QtCore.QObject):
     """Qt-friendly wrapper for multiprocessing.connection.Listener."""
 
     family = "AF_INET"
-    connection_accepted = QtCore.pyqtSignal(object)
-    connection_error = QtCore.pyqtSignal(str)
+    connection_accepted = Signal(object)
+    connection_error = Signal(str)
 
     def __init__(self, address=None, backlog=1, authkey=None, parent=None):
         super().__init__(parent)
@@ -119,11 +117,11 @@ class WorkerLauncher(QtCore.QProcess):
     """
 
     # Signals
-    processing_results = QtCore.pyqtSignal(dict)
-    error_occurred_msg = QtCore.pyqtSignal(str)
-    worker_message = QtCore.pyqtSignal(object)
-    worker_connected = QtCore.pyqtSignal()
-    worker_disconnected = QtCore.pyqtSignal()
+    processing_results = Signal(dict)
+    error_occurred_msg = Signal(str)
+    worker_message = Signal(object)
+    worker_connected = Signal()
+    worker_disconnected = Signal()
 
     def __init__(self, message_emitter: MessageEmitter | None = None, parent=None):
         super(WorkerLauncher, self).__init__(parent)
