@@ -9,64 +9,9 @@ import sys
 
 from .helpers import MultiprocessingHelper, get_logger
 from .protocols import MessageEmitter
+from .qt_compat import QtCore, Signal, QProcessEnvironment, QT_AVAILABLE
 
 logger = get_logger()
-
-# Try to import Qt - gracefully handle if not available
-QT_AVAILABLE = False
-QtCore = None
-Signal = None
-QProcessEnvironment = None
-
-try:
-    from .qt_compat import QtCore, Signal
-    from .qt_compat import QtCore as QtCoreModule  # To access QtCore.QProcessEnvironment
-    QProcessEnvironment = QtCoreModule.QProcessEnvironment
-    QT_AVAILABLE = True
-except ImportError:
-    # Qt not available - create mock base classes for import compatibility
-    class QtCore:  # type: ignore
-        class QThread:
-            def __init__(self, *args, **kwargs):
-                raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
-
-        class QObject:
-            def __init__(self, *args, **kwargs):
-                raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
-
-        class QProcess:
-            # Process error enum values (mock)
-            class ProcessError:
-                FailedToStart = 0
-                Crashed = 1
-                Timedout = 2
-                WriteError = 4
-                ReadError = 3
-                UnknownError = 5
-
-            # Process state enum values (mock)
-            class ProcessState:
-                NotRunning = 0
-                Starting = 1
-                Running = 2
-
-            def __init__(self, *args, **kwargs):
-                raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
-
-        class QSocketNotifier:
-            Read = 1
-            Write = 2
-
-            def __init__(self, *args, **kwargs):
-                raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
-
-    # Dummy signal for type hints
-    Signal = lambda *args: None
-
-    class QProcessEnvironment:  # type: ignore
-        @staticmethod
-        def systemEnvironment():
-            raise ImportError("Qt is not available. Cannot use WorkerLauncher without Qt.")
 
 
 class TemporarilyDisableNotifier:
