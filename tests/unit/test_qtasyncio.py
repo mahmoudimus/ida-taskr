@@ -237,9 +237,15 @@ class TestNewWorkerQThread:
 class TestQtApplicationIntegration:
     """Integration tests that require a Qt application running."""
 
-    @pytest.mark.skip(reason="Requires Qt application context")
-    def test_full_worker_execution(self):
+    def test_full_worker_execution(self, qapp):
         """Full test of worker execution (requires Qt app)."""
-        # This would require setting up a full Qt application
-        # which is complex in a test environment
-        pass
+        # With qapp fixture, we have a Qt application context
+        # Test that we can create worker objects
+        from ida_taskr import create_worker
+
+        def simple_task():
+            return "completed"
+
+        worker = create_worker(simple_task)
+        assert worker is not None
+        assert hasattr(worker, 'start')
