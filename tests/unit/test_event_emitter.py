@@ -187,7 +187,7 @@ class TestMessageEmitter(unittest.TestCase):
         self.assertIn("Processing timeout", error_messages)
         self.assertIn("Invalid data format", error_messages)
 
-    @pytest.mark.skipif(not QT_AVAILABLE, reason="WorkerLauncher requires Qt")
+    @pytest.mark.skip(reason="WorkerLauncher requires QCoreApplication - crashes in headless mode")
     @patch("ida_taskr.launcher.WorkerLauncher.launch_worker")
     def test_worker_launcher_integration(self, mock_launch_worker):
         """Test integration with WorkerLauncher."""
