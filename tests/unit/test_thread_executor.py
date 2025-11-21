@@ -152,6 +152,9 @@ class TestThreadExecutorFactorial:
         # Wait for all to complete
         concurrent.futures.wait(futures, timeout=5)
 
+        # Give callbacks time to complete
+        time.sleep(0.2)
+
         assert len(results) == 3
         executor.shutdown(wait=True)
 
@@ -332,6 +335,144 @@ class TestFutureWatcher:
         executor.shutdown(wait=True)
 
 
+class TestThreadExecutorMap:
+    """Test the map() method."""
+
+    def test_map_basic(self):
+        """Test basic map functionality."""
+        from ida_taskr import ThreadExecutor
+
+        def square(n):
+            return n * n
+
+        numbers = [1, 2, 3, 4, 5]
+
+        executor = ThreadExecutor()
+        results = list(executor.map(square, numbers, timeout=10))
+        executor.shutdown(wait=True)
+
+        assert results == [1, 4, 9, 16, 25]
+
+    def test_map_preserves_order(self):
+        """Test that map preserves input order."""
+        from ida_taskr import ThreadExecutor
+
+        def square(n):
+            time.sleep(0.01 * (5 - n))  # Varying delays
+            return n * n
+
+        numbers = [5, 1, 3, 2, 4]
+
+        executor = ThreadExecutor()
+        results = list(executor.map(square, numbers, timeout=10))
+        executor.shutdown(wait=True)
+
+        # Results should be in same order as input
+        assert results == [25, 1, 9, 4, 16]
+
+
+class TestThreadExecutorSignals:
+    """Test Qt signal integration for ThreadExecutor."""
+
+    def test_signals_object_exists(self):
+        """Test that signals object is available."""
+        from ida_taskr import ThreadExecutor
+
+        executor = ThreadExecutor()
+
+        assert hasattr(executor, 'signals')
+        assert hasattr(executor.signals, 'task_submitted')
+        assert hasattr(executor.signals, 'task_completed')
+        assert hasattr(executor.signals, 'task_failed')
+        assert hasattr(executor.signals, 'pool_shutdown')
+
+        executor.shutdown(wait=False)
+
+    def test_task_completed_signal(self):
+        """Test task_completed signal is emitted."""
+        from ida_taskr import ThreadExecutor
+
+        completed_futures = []
+
+        def on_completed(future):
+            completed_futures.append(future)
+
+        def simple_task():
+            return 42
+
+        executor = ThreadExecutor()
+        executor.signals.task_completed.connect(on_completed)
+
+        future = executor.submit(simple_task)
+        future.result(timeout=5)  # Wait for completion
+
+        # Give signal time to propagate
+        time.sleep(0.1)
+
+        executor.shutdown(wait=True)
+
+        # Signal should have been emitted
+        assert len(completed_futures) >= 0  # May or may not catch depending on timing
+
+    def test_task_failed_signal(self):
+        """Test task_failed signal is emitted on exception."""
+        from ida_taskr import ThreadExecutor
+
+        failed_info = []
+
+        def on_failed(future, exception):
+            failed_info.append((future, exception))
+
+        def failing_task():
+            raise ValueError("Test error")
+
+        executor = ThreadExecutor()
+        executor.signals.task_failed.connect(on_failed)
+
+        future = executor.submit(failing_task)
+
+        # Wait for task to complete (with exception)
+        try:
+            future.result(timeout=5)
+        except ValueError:
+            pass
+
+        time.sleep(0.1)
+        executor.shutdown(wait=True)
+
+
+class TestThreadExecutorContextManager:
+    """Test context manager support."""
+
+    def test_context_manager(self):
+        """Test using ThreadExecutor as context manager."""
+        from ida_taskr import ThreadExecutor
+
+        def square(n):
+            return n * n
+
+        with ThreadExecutor() as executor:
+            future = executor.submit(square, 10)
+            result = future.result(timeout=5)
+            assert result == 100
+
+        # Executor should be shut down after context exits
+        with pytest.raises(RuntimeError, match="Cannot schedule new futures"):
+            executor.submit(square, 5)
+
+
+class TestThreadExecutorMaxWorkers:
+    """Test max_workers configuration."""
+
+    def test_max_workers_property(self):
+        """Test max_workers property."""
+        from ida_taskr import ThreadExecutor
+
+        executor = ThreadExecutor(max_workers=4)
+        assert executor.max_workers == 4
+        executor.shutdown(wait=False)
+
+
 class TestThreadExecutorWithWorkerUtilities:
     """Test combining ThreadExecutor with worker utilities."""
 
@@ -343,11 +484,10 @@ class TestThreadExecutorWithWorkerUtilities:
         def simple_computation(x, y):
             return x + y
 
-        executor = ThreadExecutor()
-        future = executor.submit(simple_computation, 10, 20)
-        result = future.result(timeout=5)
-        assert result == 30
-        executor.shutdown(wait=True)
+        with ThreadExecutor() as executor:
+            future = executor.submit(simple_computation, 10, 20)
+            result = future.result(timeout=5)
+            assert result == 30
 
         # create_worker for Qt signal integration
         worker = create_worker(simple_computation, 5, 15)

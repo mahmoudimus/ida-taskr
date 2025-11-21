@@ -214,14 +214,57 @@ class FutureRunnable(QRunnable):
             logging.getLogger(__name__).critical("Exception in worker thread.", exc_info=True)
 
 
+class ThreadPoolExecutorSignals(QObject):
+    """Qt signals for ThreadExecutor events."""
+    task_submitted = Signal(object)  # future
+    task_completed = Signal(object)  # future
+    task_failed = Signal(object, object)  # future, exception
+    pool_shutdown = Signal()
+
+
 class ThreadExecutor(QObject, concurrent.futures.Executor):
-    def __init__(self, parent: Optional[QObject] = None, threadPool: Optional[QThreadPool] = None):
+    """
+    A ThreadExecutor that provides concurrent.futures.ThreadPoolExecutor-like API
+    using Qt's QThreadPool with optional Qt signal integration.
+
+    Usage:
+        executor = ThreadExecutor()
+
+        # Standard concurrent.futures API
+        future = executor.submit(task, arg1, arg2)
+        result = future.result()
+
+        # Or with Qt signals
+        executor.signals.task_completed.connect(on_task_done)
+        future = executor.submit(task, arg1, arg2)
+
+        executor.shutdown(wait=True)
+    """
+
+    def __init__(
+        self,
+        parent: Optional[QObject] = None,
+        threadPool: Optional[QThreadPool] = None,
+        max_workers: Optional[int] = None,
+    ):
         super().__init__(parent)
+        self.signals = ThreadPoolExecutorSignals()
         self._threadPool = threadPool or QThreadPool.globalInstance()
+
+        # Set max thread count if specified
+        if max_workers is not None:
+            self._threadPool.setMaxThreadCount(max_workers)
+
+        self._max_workers = max_workers or self._threadPool.maxThreadCount()
         self._depot_thread: Optional[_TaskDepotThread] = None
         self._futures: List[Future] = []
         self._shutdown = False
         self._state_lock = threading.Lock()
+
+    @property
+    def max_workers(self) -> int:
+        """Return the maximum number of worker threads."""
+        return self._max_workers
 
     def _get_depot_thread(self) -> _TaskDepotThread:
         if self._depot_thread is None:
@@ -229,6 +272,20 @@ class ThreadExecutor(QObject, concurrent.futures.Executor):
         return self._depot_thread
 
     def submit(self, func, *args, **kwargs) -> Future:
+        """
+        Submit a callable to be executed in a worker thread.
+
+        Args:
+            func: A callable to execute
+            *args: Positional arguments for the callable
+            **kwargs: Keyword arguments for the callable
+
+        Returns:
+            A Future representing the pending execution
+
+        Raises:
+            RuntimeError: If the executor has been shut down
+        """
         with self._state_lock:
             if self._shutdown:
                 raise RuntimeError("Cannot schedule new futures after shutdown.")
@@ -241,6 +298,13 @@ class ThreadExecutor(QObject, concurrent.futures.Executor):
             self._futures.append(f)
             f.add_done_callback(self._future_done)
             self._threadPool.start(runnable)
+
+            # Emit task_submitted signal
+            try:
+                self.signals.task_submitted.emit(f)
+            except RuntimeError:
+                pass  # Qt object may have been deleted
+
             return f
 
     def __make_task_runnable(self, task: Task) -> Tuple[Future, _TaskRunnable]:
@@ -253,15 +317,81 @@ class ThreadExecutor(QObject, concurrent.futures.Executor):
         runnable = _TaskRunnable(f, task, (), {})
         return f, runnable
 
-    def shutdown(self, wait: bool = True):
+    def map(
+        self,
+        fn: Callable,
+        *iterables,
+        timeout: Optional[float] = None,
+        chunksize: int = 1,
+    ):
+        """
+        Map a function over iterables, executing in parallel threads.
+
+        Args:
+            fn: A callable
+            *iterables: Iterables of arguments
+            timeout: Maximum time to wait for results
+            chunksize: Ignored (for API compatibility with ProcessPoolExecutor)
+
+        Returns:
+            Iterator of results in the same order as the input iterables
+        """
+        with self._state_lock:
+            if self._shutdown:
+                raise RuntimeError("Cannot schedule new futures after shutdown.")
+
+        # Submit all tasks
+        futures = [self.submit(fn, *args) for args in zip(*iterables)]
+
+        # Yield results in order
+        for future in futures:
+            yield future.result(timeout=timeout)
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False):
+        """
+        Shutdown the executor.
+
+        Args:
+            wait: If True, wait for all pending futures to complete
+            cancel_futures: If True, cancel all pending futures (best effort)
+        """
         with self._state_lock:
             self._shutdown = True
             futures = list(self._futures)
+
+        if cancel_futures:
+            for f in futures:
+                f.cancel()
+
         if wait:
             concurrent.futures.wait(futures)
 
+        try:
+            self.signals.pool_shutdown.emit()
+        except RuntimeError:
+            pass  # Qt object may have been deleted
+
     def _future_done(self, future: Future):
-        self._futures.remove(future)
+        """Called when a future completes - emits appropriate Qt signals."""
+        with self._state_lock:
+            if future in self._futures:
+                self._futures.remove(future)
+
+        try:
+            exc = future.exception()
+            if exc is not None:
+                self.signals.task_failed.emit(future, exc)
+            else:
+                self.signals.task_completed.emit(future)
+        except (concurrent.futures.CancelledError, RuntimeError):
+            pass  # Future was cancelled or Qt object deleted
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.shutdown(wait=True)
+        return False
 
 
 class Task(QObject):
@@ -749,6 +879,7 @@ __all__ = [
     # Thread executor
     "ThreadExecutor",
     "QThreadPoolExecutor",  # Alias
+    "ThreadPoolExecutorSignals",
     "Task",
     "FutureWatcher",
     "Future",
