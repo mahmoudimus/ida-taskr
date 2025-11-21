@@ -43,8 +43,12 @@ if QT_ASYNCIO_AVAILABLE:
             set_event_loop_policy,
             # Thread executor
             ThreadExecutor,
+            QThreadPoolExecutor,
             Task,
             FutureWatcher,
+            # Process executor
+            ProcessPoolExecutor,
+            QProcessPoolExecutor,
             # Worker utilities
             WorkerBase as QtWorkerBase,
             FunctionWorker,
@@ -62,8 +66,12 @@ if QT_ASYNCIO_AVAILABLE:
             "set_event_loop_policy",
             # Thread executor
             "ThreadExecutor",
+            "QThreadPoolExecutor",
             "Task",
             "FutureWatcher",
+            # Process executor
+            "ProcessPoolExecutor",
+            "QProcessPoolExecutor",
             # Worker utilities
             "QtWorkerBase",
             "FunctionWorker",
