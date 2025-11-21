@@ -8,10 +8,19 @@ import sys
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
+import pytest
+
 # Add the src directory to the path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from ida_taskr.qt_compat import QT_AVAILABLE
 from ida_taskr import TaskRunner, get_logger
+
+# Skip all tests if Qt is not available
+pytestmark = pytest.mark.skipif(
+    not QT_AVAILABLE,
+    reason="TaskRunner requires Qt"
+)
 
 
 class TestTaskRunner(unittest.TestCase):

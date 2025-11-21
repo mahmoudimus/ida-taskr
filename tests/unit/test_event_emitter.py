@@ -9,7 +9,16 @@ import logging
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
-from ida_taskr import MessageEmitter, WorkerLauncher, get_logger
+import pytest
+
+from ida_taskr.qt_compat import QT_AVAILABLE
+from ida_taskr import MessageEmitter, get_logger
+
+# Import WorkerLauncher only if Qt is available
+if QT_AVAILABLE:
+    from ida_taskr import WorkerLauncher
+else:
+    WorkerLauncher = None
 
 logger = get_logger(__name__)
 
@@ -178,6 +187,7 @@ class TestMessageEmitter(unittest.TestCase):
         self.assertIn("Processing timeout", error_messages)
         self.assertIn("Invalid data format", error_messages)
 
+    @pytest.mark.skipif(not QT_AVAILABLE, reason="WorkerLauncher requires Qt")
     @patch("ida_taskr.launcher.WorkerLauncher.launch_worker")
     def test_worker_launcher_integration(self, mock_launch_worker):
         """Test integration with WorkerLauncher."""
