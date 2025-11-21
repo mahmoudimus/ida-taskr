@@ -10,7 +10,7 @@ import time
 
 import pytest
 
-from ida_taskr import QT_ASYNCIO_AVAILABLE
+from ida_taskr import QT_ASYNCIO_AVAILABLE, is_ida
 
 # Skip all tests if QtAsyncio is not available
 pytestmark = pytest.mark.skipif(
@@ -237,10 +237,10 @@ class TestNewWorkerQThread:
 class TestQtApplicationIntegration:
     """Integration tests that require a Qt application running."""
 
-    def test_full_worker_execution(self, qapp):
-        """Full test of worker execution (requires Qt app)."""
-        # With qapp fixture, we have a Qt application context
-        # Test that we can create worker objects
+    @pytest.mark.skipif(not is_ida(), reason="Requires IDA Pro's Qt application")
+    def test_full_worker_execution(self):
+        """Full test of worker execution (IDA Pro only)."""
+        # In IDA Pro, Qt application is already running
         from ida_taskr import create_worker
 
         def simple_task():
@@ -249,3 +249,4 @@ class TestQtApplicationIntegration:
         worker = create_worker(simple_task)
         assert worker is not None
         assert hasattr(worker, 'start')
+        # Note: Can't easily test actual execution without Qt event loop running

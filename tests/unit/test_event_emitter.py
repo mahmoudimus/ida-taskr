@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from ida_taskr import MessageEmitter, get_logger, is_ida
 from ida_taskr.qt_compat import QT_AVAILABLE
-from ida_taskr import MessageEmitter, get_logger
 
 # Import WorkerLauncher only if Qt is available
 if QT_AVAILABLE:
@@ -182,10 +182,10 @@ class TestMessageEmitter:
         assert "Processing timeout" in error_messages
         assert "Invalid data format" in error_messages
 
-    @pytest.mark.skip(reason="WorkerLauncher/QProcess requires full Qt event loop, not just QCoreApplication")
+    @pytest.mark.skipif(not is_ida(), reason="WorkerLauncher requires IDA Pro's Qt application")
     @patch("ida_taskr.launcher.WorkerLauncher.launch_worker")
     def test_worker_launcher_integration(self, mock_launch_worker):
-        """Test integration with WorkerLauncher."""
+        """Test integration with WorkerLauncher (IDA Pro only)."""
         # Configure the mock
         mock_launch_worker.return_value = True
 
