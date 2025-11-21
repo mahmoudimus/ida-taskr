@@ -18,6 +18,9 @@ from .worker import ConnectionContext, WorkerBase
 # QtAsyncio integration (optional)
 from .qt_compat import QT_ASYNCIO_AVAILABLE
 
+# Always define INTERPRETER_POOL_AVAILABLE (False if Qt not available)
+INTERPRETER_POOL_AVAILABLE = False
+
 __all__ = [
     "WorkerLauncher",
     "WorkerBase",
@@ -30,6 +33,7 @@ __all__ = [
     "TaskRunner",
     "DataProcessorCore",
     "QT_ASYNCIO_AVAILABLE",
+    "INTERPRETER_POOL_AVAILABLE",
 ]
 
 # Conditionally export qtasyncio utilities if available
@@ -49,10 +53,10 @@ if QT_ASYNCIO_AVAILABLE:
             # Process executor
             ProcessPoolExecutor,
             QProcessPoolExecutor,
-            # Interpreter executor (Python 3.13+)
+            # Interpreter executor
             InterpreterPoolExecutor,
             QInterpreterPoolExecutor,
-            INTERPRETER_POOL_AVAILABLE,
+            INTERPRETER_POOL_AVAILABLE as _INTERPRETER_POOL_AVAILABLE,
             # Worker utilities
             WorkerBase as QtWorkerBase,
             FunctionWorker,
@@ -61,6 +65,9 @@ if QT_ASYNCIO_AVAILABLE:
             thread_worker,
             new_worker_qthread,
         )
+
+        # Update module-level variable with actual value from qtasyncio
+        INTERPRETER_POOL_AVAILABLE = _INTERPRETER_POOL_AVAILABLE
 
         __all__.extend([
             # Asyncio integration
