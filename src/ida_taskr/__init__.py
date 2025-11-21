@@ -15,6 +15,9 @@ from .task_runner import TaskRunner
 from .utils import DataProcessorCore
 from .worker import ConnectionContext, WorkerBase
 
+# Decorators for simplified API
+from .decorators import background_task, cpu_task, io_task, parallel
+
 # QtAsyncio integration (optional)
 from .qt_compat import QT_ASYNCIO_AVAILABLE
 
@@ -34,6 +37,11 @@ __all__ = [
     "DataProcessorCore",
     "QT_ASYNCIO_AVAILABLE",
     "INTERPRETER_POOL_AVAILABLE",
+    # Decorators
+    "background_task",
+    "cpu_task",
+    "io_task",
+    "parallel",
 ]
 
 # Conditionally export qtasyncio utilities if available
