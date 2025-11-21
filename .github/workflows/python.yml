@@ -25,6 +25,7 @@ jobs:
         strategy:
             matrix:
                 python-version: ["3.11", "3.12", "3.13"]
+                qt-framework: ["pyqt5", "pyside6"]
         env:
             PYTHONPATH: ${{ github.workspace }}
         steps:
@@ -42,7 +43,7 @@ jobs:
             - name: Install dependencies
               run: |
                   pip install --upgrade pip setuptools wheel uv
-                  uv pip install --system -e .[tests,pyside6]
+                  uv pip install --system -e .[tests,${{ matrix.qt-framework }}]
 
             - name: Python unit tests
               run: |
