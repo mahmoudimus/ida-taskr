@@ -5,7 +5,6 @@ Tests for TaskRunner functionality.
 import logging
 import os
 import sys
-import unittest
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -23,10 +22,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-class TestTaskRunner(unittest.TestCase):
+class TestTaskRunner:
     """Test suite for TaskRunner class."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.worker_script = "test_worker.py"
         self.worker_args = {"data_size": 1024, "start_ea": "0x1000", "is64": "1"}
@@ -35,13 +34,13 @@ class TestTaskRunner(unittest.TestCase):
         """Test TaskRunner initialization with default parameters."""
         runner = TaskRunner(self.worker_script, self.worker_args)
 
-        self.assertEqual(runner.worker_script, self.worker_script)
-        self.assertEqual(runner.worker_args, self.worker_args)
-        self.assertIsNotNone(runner.logger)
-        self.assertIsNotNone(runner.message_emitter)
-        self.assertIsNotNone(runner.launcher)
-        self.assertIsNone(runner._results_callback)
-        self.assertIsNone(runner._progress_callback)
+        assert runner.worker_script == self.worker_script
+        assert runner.worker_args == self.worker_args
+        assert runner.logger is not None
+        assert runner.message_emitter is not None
+        assert runner.launcher is not None
+        assert runner._results_callback is None
+        assert runner._progress_callback is None
 
     def test_task_runner_initialization_with_log_level(self):
         """Test TaskRunner initialization with custom log level."""
@@ -49,16 +48,16 @@ class TestTaskRunner(unittest.TestCase):
             self.worker_script, self.worker_args, log_level=logging.DEBUG
         )
 
-        self.assertEqual(runner.worker_script, self.worker_script)
-        self.assertEqual(runner.worker_args, self.worker_args)
-        self.assertIsNotNone(runner.logger)
+        assert runner.worker_script == self.worker_script
+        assert runner.worker_args == self.worker_args
+        assert runner.logger is not None
 
     def test_task_runner_initialization_with_custom_logger(self):
         """Test TaskRunner initialization with custom logger."""
         custom_logger = get_logger("test_logger")
         runner = TaskRunner(self.worker_script, self.worker_args, logger=custom_logger)
 
-        self.assertEqual(runner.logger, custom_logger)
+        assert runner.logger == custom_logger
 
     def test_on_results_callback_registration(self):
         """Test registering results callback."""
@@ -70,11 +69,11 @@ class TestTaskRunner(unittest.TestCase):
         # Register callback
         runner.on_results(callback)
 
-        self.assertEqual(runner._results_callback, callback)
+        assert runner._results_callback == callback
 
         # Verify message emitter listener was registered
         # This is indirect testing since we can't easily inspect the emitter's listeners
-        self.assertIsNotNone(runner._results_callback)
+        assert runner._results_callback is not None
 
     def test_on_progress_callback_registration(self):
         """Test registering progress callback."""
@@ -86,7 +85,7 @@ class TestTaskRunner(unittest.TestCase):
         # Register callback
         runner.on_progress(callback)
 
-        self.assertEqual(runner._progress_callback, callback)
+        assert runner._progress_callback == callback
 
     @patch("ida_taskr.task_runner.WorkerLauncher")
     def test_start_successful_launch(self, mock_launcher_class):
@@ -237,7 +236,7 @@ class TestTaskRunner(unittest.TestCase):
         progress_callback.assert_called_once_with(0.8, "working")
 
 
-class TestTaskRunnerDoctest(unittest.TestCase):
+class TestTaskRunnerDoctest:
     """Test TaskRunner with simple usage patterns similar to documentation."""
 
     def test_simple_usage_pattern(self):
@@ -280,11 +279,7 @@ class TestTaskRunnerDoctest(unittest.TestCase):
             )
 
             # Verify callbacks worked
-            self.assertEqual(len(results_received), 1)
-            self.assertEqual(results_received[0]["status"], "success")
-            self.assertEqual(len(progress_received), 1)
-            self.assertEqual(progress_received[0], (0.5, "halfway"))
-
-
-if __name__ == "__main__":
-    unittest.main()
+            assert len(results_received) == 1
+            assert results_received[0]["status"] == "success"
+            assert len(progress_received) == 1
+            assert progress_received[0] == (0.5, "halfway")

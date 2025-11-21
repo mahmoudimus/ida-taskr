@@ -7,25 +7,16 @@ thread executor, and event loop integration.
 
 import asyncio
 import time
-import unittest
+
+import pytest
 
 from ida_taskr import QT_ASYNCIO_AVAILABLE
 
-# Try to import pytest, fall back to unittest skip if not available
-try:
-    import pytest
-    pytestmark = pytest.mark.skipif(
-        not QT_ASYNCIO_AVAILABLE,
-        reason="QtAsyncio module not available"
-    )
-    PYTEST_AVAILABLE = True
-except ImportError:
-    PYTEST_AVAILABLE = False
-    # Use unittest skipUnless decorator as fallback
-    def skipif_no_qtasyncio(cls):
-        if not QT_ASYNCIO_AVAILABLE:
-            return unittest.skip("QtAsyncio module not available")(cls)
-        return cls
+# Skip all tests if QtAsyncio is not available
+pytestmark = pytest.mark.skipif(
+    not QT_ASYNCIO_AVAILABLE,
+    reason="QtAsyncio module not available"
+)
 
 
 class TestQtAsyncioImports:
@@ -246,7 +237,7 @@ class TestNewWorkerQThread:
 class TestQtApplicationIntegration:
     """Integration tests that require a Qt application running."""
 
-    @unittest.skip("Requires Qt application context")
+    @pytest.mark.skip(reason="Requires Qt application context")
     def test_full_worker_execution(self):
         """Full test of worker execution (requires Qt app)."""
         # This would require setting up a full Qt application

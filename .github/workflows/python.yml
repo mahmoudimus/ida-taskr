@@ -42,11 +42,11 @@ jobs:
             - name: Install dependencies
               run: |
                   pip install --upgrade pip setuptools wheel uv
-                  uv pip install --system -e .[pyside6]
+                  uv pip install --system -e .[tests,pyside6]
 
             - name: Python unit tests
               run: |
-                  ./run_tests.sh
+                  python -m pytest tests/ -v --tb=short
 
     qt-integration-tests:
         runs-on: ubuntu-24.04
@@ -73,7 +73,7 @@ jobs:
             - name: Install Python dependencies
               run: |
                   pip install --upgrade pip setuptools wheel
-                  pip install -e .[ci,${{ matrix.qt-framework }}]
+                  pip install -e .[tests,ci,${{ matrix.qt-framework }}]
 
             - name: Run Qt Core integration tests
               run: |
