@@ -49,6 +49,10 @@ if QT_ASYNCIO_AVAILABLE:
             # Process executor
             ProcessPoolExecutor,
             QProcessPoolExecutor,
+            # Interpreter executor (Python 3.13+)
+            InterpreterPoolExecutor,
+            QInterpreterPoolExecutor,
+            INTERPRETER_POOL_AVAILABLE,
             # Worker utilities
             WorkerBase as QtWorkerBase,
             FunctionWorker,
@@ -72,6 +76,10 @@ if QT_ASYNCIO_AVAILABLE:
             # Process executor
             "ProcessPoolExecutor",
             "QProcessPoolExecutor",
+            # Interpreter executor (Python 3.13+)
+            "InterpreterPoolExecutor",
+            "QInterpreterPoolExecutor",
+            "INTERPRETER_POOL_AVAILABLE",
             # Worker utilities
             "QtWorkerBase",
             "FunctionWorker",

@@ -867,6 +867,181 @@ QProcessPoolExecutor = ProcessPoolExecutor
 QThreadPoolExecutor = ThreadExecutor  # Alias
 
 
+# --------------------------------------------------------------------------- #
+# InterpreterPoolExecutor - process-based executor with Qt signal support
+# Mimics Python 3.13+ InterpreterPoolExecutor API using ProcessPoolExecutor
+# for embedded contexts (like IDA Pro) where subinterpreters won't work
+# --------------------------------------------------------------------------- #
+
+# Always available - uses ProcessPoolExecutor as backend for isolation
+INTERPRETER_POOL_AVAILABLE = True
+
+
+class InterpreterPoolExecutorSignals(QObject):
+    """Qt signals for InterpreterPoolExecutor events."""
+    task_submitted = Signal(object)  # future
+    task_completed = Signal(object)  # future
+    task_failed = Signal(object, object)  # future, exception
+    pool_shutdown = Signal()
+
+
+class InterpreterPoolExecutor(QObject, concurrent.futures.Executor):
+    """
+    An executor that provides concurrent.futures.InterpreterPoolExecutor API
+    with optional Qt signal integration for task completion notifications.
+
+    This implementation uses ProcessPoolExecutor as the backend to provide
+    true parallelism and isolation, making it compatible with embedded Python
+    contexts (like IDA Pro) where Python 3.13+ subinterpreters may not work.
+
+    Usage:
+        executor = InterpreterPoolExecutor(max_workers=4)
+
+        # Standard concurrent.futures API
+        future = executor.submit(cpu_bound_task, arg1, arg2)
+        result = future.result()
+
+        # Or with Qt signals
+        executor.signals.task_completed.connect(on_task_done)
+        future = executor.submit(cpu_bound_task, arg1, arg2)
+
+        executor.shutdown(wait=True)
+
+    Note: Functions and arguments must be picklable (same restrictions as
+    ProcessPoolExecutor/multiprocessing).
+    """
+
+    def __init__(
+        self,
+        max_workers: Optional[int] = None,
+        parent: Optional[QObject] = None,
+    ):
+        super().__init__(parent)
+        self.signals = InterpreterPoolExecutorSignals()
+        self._max_workers = max_workers or multiprocessing.cpu_count()
+
+        # Use ProcessPoolExecutor as backend for isolation
+        # This provides similar benefits to subinterpreters (no GIL contention)
+        # while being compatible with embedded Python contexts
+        self._executor = concurrent.futures.ProcessPoolExecutor(
+            max_workers=self._max_workers
+        )
+
+        self._futures: List[concurrent.futures.Future] = []
+        self._shutdown = False
+        self._state_lock = threading.Lock()
+
+    @property
+    def max_workers(self) -> int:
+        """Return the maximum number of worker processes."""
+        return self._max_workers
+
+    def submit(self, fn: Callable, *args, **kwargs) -> concurrent.futures.Future:
+        """
+        Submit a callable to be executed in a worker process.
+
+        Args:
+            fn: A callable to execute (must be picklable)
+            *args: Positional arguments for the callable
+            **kwargs: Keyword arguments for the callable
+
+        Returns:
+            A Future representing the pending execution
+
+        Raises:
+            RuntimeError: If the executor has been shut down
+        """
+        with self._state_lock:
+            if self._shutdown:
+                raise RuntimeError("Cannot schedule new futures after shutdown.")
+
+            future = self._executor.submit(fn, *args, **kwargs)
+            self._futures.append(future)
+
+            # Add callback for Qt signal emission
+            future.add_done_callback(self._on_future_done)
+
+            # Emit task_submitted signal
+            try:
+                self.signals.task_submitted.emit(future)
+            except RuntimeError:
+                pass  # Qt object may have been deleted
+
+            return future
+
+    def _on_future_done(self, future: concurrent.futures.Future):
+        """Called when a future completes - emits appropriate Qt signals."""
+        with self._state_lock:
+            if future in self._futures:
+                self._futures.remove(future)
+
+        try:
+            exc = future.exception()
+            if exc is not None:
+                self.signals.task_failed.emit(future, exc)
+            else:
+                self.signals.task_completed.emit(future)
+        except (concurrent.futures.CancelledError, RuntimeError):
+            pass  # Future was cancelled or Qt object deleted
+
+    def map(
+        self,
+        fn: Callable,
+        *iterables,
+        timeout: Optional[float] = None,
+        chunksize: int = 1,
+    ):
+        """
+        Map a function over iterables, executing in parallel processes.
+
+        Args:
+            fn: A callable (must be picklable)
+            *iterables: Iterables of arguments
+            timeout: Maximum time to wait for results
+            chunksize: Size of chunks for efficiency
+
+        Returns:
+            Iterator of results in the same order as the input iterables
+
+        Raises:
+            RuntimeError: If the executor has been shut down
+        """
+        with self._state_lock:
+            if self._shutdown:
+                raise RuntimeError("Cannot schedule new futures after shutdown.")
+
+        return self._executor.map(fn, *iterables, timeout=timeout, chunksize=chunksize)
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False):
+        """
+        Shutdown the executor.
+
+        Args:
+            wait: If True, wait for all pending futures to complete
+            cancel_futures: If True, cancel all pending futures
+        """
+        with self._state_lock:
+            self._shutdown = True
+
+        self._executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+
+        try:
+            self.signals.pool_shutdown.emit()
+        except RuntimeError:
+            pass  # Qt object may have been deleted
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.shutdown(wait=True)
+        return False
+
+
+# Alias for naming consistency
+QInterpreterPoolExecutor = InterpreterPoolExecutor
+
+
 # Single-file ready-to-use module.
 # No external dependencies beyond PyQt5/PySide6.
 
@@ -887,6 +1062,11 @@ __all__ = [
     "ProcessPoolExecutor",
     "QProcessPoolExecutor",  # Alias
     "ProcessPoolExecutorSignals",
+    # Interpreter executor (Python 3.13+)
+    "InterpreterPoolExecutor",
+    "QInterpreterPoolExecutor",  # Alias
+    "InterpreterPoolExecutorSignals",
+    "INTERPRETER_POOL_AVAILABLE",
     # Worker utilities
     "WorkerBase",
     "WorkerBaseSignals",
