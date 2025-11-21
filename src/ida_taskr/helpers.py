@@ -32,8 +32,17 @@ def is_ida():
         except ImportError:
             return False
     """
+    # Check if sys.executable is an IDA executable
     exec_name = pathlib.Path(sys.executable).name.lower()
-    return exec_name.startswith(("ida", "idat", "idaw", "idag"))
+    if exec_name.startswith(("ida", "idat", "idaw", "idag")):
+        return True
+
+    # Also check if stdout is IDAPythonStdOut (when running scripts via -S flag)
+    # This handles the case where IDA runs scripts with -S"script.py"
+    if type(sys.stdout).__name__ == "IDAPythonStdOut":
+        return True
+
+    return False
 
 
 # on windows, we need to set the encoding to utf-8 because it defaults to cp1252

@@ -48,13 +48,14 @@ def main():
         print(f"  - {test}")
     print()
 
-    # Run pytest
-    cmd = [sys.executable, "-m", "pytest"] + ida_tests + ["-v", "--tb=short"]
+    # Run pytest with the venv Python that has all dependencies
+    python_exe = "/app/ida/.venv/bin/python"
+    cmd = [python_exe, "-m", "pytest"] + ida_tests + ["-v", "--tb=short"]
 
     print(f"Command: {' '.join(cmd)}")
     print()
 
-    result = subprocess.run(cmd, cwd="/path/to/ida-taskr")
+    result = subprocess.run(cmd, cwd="/home/user/ida-taskr")
 
     print()
     print("=" * 70)
