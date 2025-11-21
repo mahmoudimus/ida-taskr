@@ -178,6 +178,9 @@ class TestWorkerControllerIntegration:
             async def run(self):
                 return "done"
 
+            async def shutdown(self):
+                pass
+
         emitter = DummyEmitter()
 
         # Test with QtAsyncio disabled
