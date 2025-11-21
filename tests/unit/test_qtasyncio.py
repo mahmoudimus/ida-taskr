@@ -237,10 +237,10 @@ class TestNewWorkerQThread:
 class TestQtApplicationIntegration:
     """Integration tests that require a Qt application running."""
 
-    @pytest.mark.skipif(not is_ida(), reason="Requires IDA Pro's Qt application")
-    def test_full_worker_execution(self):
-        """Full test of worker execution (IDA Pro only)."""
-        # In IDA Pro, Qt application is already running
+    @pytest.mark.skipif(not QT_ASYNCIO_AVAILABLE, reason="Requires Qt application")
+    def test_full_worker_execution(self, qapp):
+        """Full test of worker execution (requires Qt application)."""
+        # Requires Qt application to be running
         from ida_taskr import create_worker
 
         def simple_task():
