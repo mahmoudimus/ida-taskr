@@ -12,13 +12,22 @@ from pathlib import Path
 import pytest
 
 # Import from qt_compat to get the unified Signal/Slot API
-from ida_taskr.qt_compat import QtCore, Signal, QT_API
+from ida_taskr.qt_compat import QtCore, Signal, QT_API, QT_AVAILABLE
 
-# Import Qt Core components
-QObject = QtCore.QObject
-QThread = QtCore.QThread
-QProcess = QtCore.QProcess
-QProcessEnvironment = QtCore.QProcessEnvironment
+# Skip all tests if Qt is not available (e.g., IDA headless mode)
+pytestmark = pytest.mark.skipif(
+    not QT_AVAILABLE,
+    reason="Qt is not available (possibly running in IDA headless mode)"
+)
+
+# Import Qt Core components (only if Qt is available)
+if QT_AVAILABLE:
+    QObject = QtCore.QObject
+    QThread = QtCore.QThread
+    QProcess = QtCore.QProcess
+    QProcessEnvironment = QtCore.QProcessEnvironment
+else:
+    QObject = QThread = QProcess = QProcessEnvironment = None
 
 
 class TestQtCoreFramework:
