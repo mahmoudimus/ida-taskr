@@ -236,11 +236,201 @@ def parallel(max_workers: int = None):
     return background_task(max_workers=max_workers, executor_type='thread')
 
 
+def shared_memory_task(
+    func: Optional[Callable] = None,
+    *,
+    num_chunks: int = 8,
+    max_workers: Optional[int] = None,
+    on_complete: Optional[Callable[[list], None]] = None,
+    on_error: Optional[Callable[[Exception], None]] = None,
+):
+    """
+    Decorator for processing large data using shared memory across multiple processes.
+
+    Handles all the shared memory complexity:
+    - Creates shared memory segment
+    - Copies data once
+    - Calculates chunk boundaries
+    - Creates workers that attach to shared memory
+    - Collects results
+    - Cleanup (memoryview, close, unlink)
+
+    User just writes the chunk processing logic!
+
+    Args:
+        func: The chunk processing function (auto-filled when used without parens)
+        num_chunks: Number of chunks to split data into (default: 8)
+        max_workers: Maximum number of parallel workers (default: num_chunks)
+        on_complete: Callback when all chunks complete, receives list of results
+        on_error: Callback when any chunk fails, receives exception
+
+    The decorated function receives:
+        chunk_data: memoryview of this chunk's data
+        chunk_id: 0-based chunk index
+        total_chunks: total number of chunks
+
+    Returns:
+        Decorated function that takes full data and returns list of all chunk results
+
+    Example:
+        >>> @shared_memory_task(num_chunks=8)
+        ... def analyze_chunk(chunk_data, chunk_id, total_chunks):
+        ...     # Process this chunk
+        ...     signatures = find_patterns(chunk_data)
+        ...     return {'chunk': chunk_id, 'sigs': signatures}
+        ...
+        >>> # Usage - just pass the full data!
+        >>> results = analyze_chunk(binary_data)  # Returns list of 8 results
+        >>> # ida-taskr handles all shared memory complexity
+
+    Real-world IDA example:
+        >>> @shared_memory_task(num_chunks=16)
+        ... def find_signatures(chunk_data, chunk_id, total_chunks):
+        ...     signatures = []
+        ...     for i in range(len(chunk_data)):
+        ...         if is_interesting_pattern(chunk_data[i:i+16]):
+        ...             signatures.append(bytes(chunk_data[i:i+16]))
+        ...     return signatures
+        ...
+        >>> # Get binary data from IDA
+        >>> binary_data = ida_bytes.get_bytes(start_ea, size)
+        >>> # Process in parallel - shared memory handles 8MB+ efficiently
+        >>> all_signatures = find_signatures(binary_data)
+    """
+    import multiprocessing.shared_memory as shm_module
+
+    def decorator(fn: Callable) -> Callable:
+        """The actual decorator function."""
+
+        @functools.wraps(fn)
+        def wrapper(data: bytes) -> list:
+            """
+            Wrapper that handles all shared memory setup/teardown.
+
+            Args:
+                data: Full binary data to process
+
+            Returns:
+                List of results from all chunks
+            """
+            if not QT_AVAILABLE:
+                raise RuntimeError("Qt is not available - cannot use shared memory tasks")
+
+            # Create shared memory segment
+            shm = shm_module.SharedMemory(create=True, size=len(data))
+
+            try:
+                # Copy data into shared memory (ONCE!)
+                shm.buf[:len(data)] = data
+
+                # Calculate chunk boundaries
+                chunk_size = len(data) // num_chunks
+                chunks_info = []
+
+                for i in range(num_chunks):
+                    start = i * chunk_size
+                    # Last chunk gets any remainder
+                    end = start + chunk_size if i < num_chunks - 1 else len(data)
+                    chunks_info.append((start, end, i))
+
+                # Create executor
+                workers = max_workers if max_workers else num_chunks
+                executor = ProcessPoolExecutor(max_workers=workers)
+
+                try:
+                    # Submit all chunks
+                    futures = []
+                    for start, end, chunk_id in chunks_info:
+                        future = executor.submit(
+                            _shared_memory_worker,
+                            fn,
+                            shm.name,
+                            start,
+                            end,
+                            chunk_id,
+                            num_chunks
+                        )
+                        futures.append(future)
+
+                    # Collect results
+                    results = []
+                    for future in futures:
+                        try:
+                            result = future.result()
+                            results.append(result)
+                        except Exception as e:
+                            if on_error:
+                                on_error(e)
+                            raise
+
+                    # Call completion callback if provided
+                    if on_complete:
+                        on_complete(results)
+
+                    return results
+
+                finally:
+                    executor.shutdown(wait=True)
+
+            finally:
+                # Cleanup shared memory
+                shm.close()
+                shm.unlink()
+
+        return wrapper
+
+    # Handle both @shared_memory_task and @shared_memory_task(...)
+    if func is None:
+        # Called with arguments: @shared_memory_task(num_chunks=16)
+        return decorator
+    else:
+        # Called without arguments: @shared_memory_task
+        return decorator(func)
+
+
+def _shared_memory_worker(fn: Callable, shm_name: str, start: int, end: int, chunk_id: int, total_chunks: int):
+    """
+    Worker function that attaches to shared memory and processes a chunk.
+
+    This needs to be a module-level function so it can be pickled for ProcessPoolExecutor.
+
+    Args:
+        fn: The user's chunk processing function
+        shm_name: Name of the shared memory segment
+        start: Start offset in shared memory
+        end: End offset in shared memory
+        chunk_id: This chunk's ID
+        total_chunks: Total number of chunks
+
+    Returns:
+        Result from user's chunk processing function
+    """
+    import multiprocessing.shared_memory as shm_module
+
+    # Attach to existing shared memory
+    shm = shm_module.SharedMemory(name=shm_name)
+
+    try:
+        # Get view of this chunk (no data copying!)
+        chunk_data = memoryview(shm.buf)[start:end]
+
+        # Call user's function with chunk data
+        result = fn(chunk_data, chunk_id, total_chunks)
+
+        return result
+
+    finally:
+        # CRITICAL: Delete memoryview before closing shared memory
+        del chunk_data
+        shm.close()
+
+
 # Export all decorators
 __all__ = [
     'background_task',
     'cpu_task',
     'io_task',
     'parallel',
+    'shared_memory_task',
     'get_global_executor',
 ]

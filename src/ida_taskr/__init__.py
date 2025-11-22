@@ -16,7 +16,7 @@ from .utils import DataProcessorCore
 from .worker import ConnectionContext, WorkerBase
 
 # Decorators for simplified API
-from .decorators import background_task, cpu_task, io_task, parallel
+from .decorators import background_task, cpu_task, io_task, parallel, shared_memory_task
 
 # QtAsyncio integration (optional)
 from .qt_compat import QT_ASYNCIO_AVAILABLE
@@ -42,6 +42,7 @@ __all__ = [
     "cpu_task",
     "io_task",
     "parallel",
+    "shared_memory_task",
 ]
 
 # Conditionally export qtasyncio utilities if available
