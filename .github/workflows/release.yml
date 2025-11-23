@@ -1,0 +1,93 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-plugin:
+    name: Build IDA Plugin Archive
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build wheel setuptools
+
+      - name: Build Python package
+        run: python -m build
+
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION="dev-$(date +%Y%m%d)"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
+
+      - name: Create HCLI plugin archive
+        run: |
+          mkdir -p ida-taskr-plugin/ida_taskr
+
+          # Copy source files
+          cp -r src/ida_taskr/* ida-taskr-plugin/ida_taskr/
+
+          # Copy metadata and documentation
+          cp ida-plugin.json ida-taskr-plugin/
+          cp LICENSE ida-taskr-plugin/
+          cp README.md ida-taskr-plugin/
+
+          # Create archive
+          cd ida-taskr-plugin
+          zip -r ../ida-taskr-${{ steps.get_version.outputs.version }}.zip .
+          cd ..
+
+          # Also create a latest version for convenience
+          cp ida-taskr-${{ steps.get_version.outputs.version }}.zip ida-taskr-latest.zip
+
+      - name: Upload plugin artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ida-taskr-plugin
+          path: |
+            ida-taskr-*.zip
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ida-taskr-${{ steps.get_version.outputs.version }}.zip
+            ida-taskr-latest.zip
+            dist/*.whl
+            dist/*.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to PyPI
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true

@@ -1,0 +1,36 @@
+{
+  "IDAMetadataDescriptorVersion": 1,
+  "plugin": {
+    "name": "ida-taskr",
+    "entryPoint": "src/ida_taskr/__init__.py",
+    "version": "0.1.0",
+    "description": "Pure Python library for IDA Pro parallel computing with Qt-based multiprocessing, decorators, and shared memory executors",
+    "idaVersions": ">=9.0",
+    "license": "MIT",
+    "urls": {
+      "repository": "https://github.com/mahmoudimus/ida-taskr"
+    },
+    "authors": [
+      {
+        "name": "Mahmoud Rusty Abdelkader"
+      }
+    ],
+    "pythonDependencies": [],
+    "categories": [
+      "api-scripting-and-automation",
+      "collaboration-and-productivity"
+    ],
+    "keywords": [
+      "multiprocessing",
+      "parallel-computing",
+      "background-tasks",
+      "shared-memory",
+      "concurrent-futures",
+      "qt-integration",
+      "task-execution",
+      "worker-processes",
+      "decorators",
+      "async"
+    ]
+  }
+}
