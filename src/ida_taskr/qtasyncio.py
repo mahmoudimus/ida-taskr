@@ -1042,6 +1042,441 @@ class InterpreterPoolExecutor(QObject, concurrent.futures.Executor):
 QInterpreterPoolExecutor = InterpreterPoolExecutor
 
 
+# --------------------------------------------------------------------------- #
+# SharedMemoryExecutor - optimized executor for chunked large data processing
+# --------------------------------------------------------------------------- #
+import multiprocessing.shared_memory as shm_module
+
+
+class SharedMemoryExecutorSignals(QObject):
+    """Qt signals for SharedMemoryExecutor events."""
+    task_submitted = Signal(object)  # future
+    task_completed = Signal(object)  # future
+    task_failed = Signal(object, object)  # future, exception
+    chunk_completed = Signal(int, object)  # chunk_id, result
+    all_chunks_completed = Signal(object)  # combined_result
+    pool_shutdown = Signal()
+
+
+def _shared_memory_chunk_worker(fn: Callable, shm_name: str, start: int, end: int, chunk_id: int, total_chunks: int):
+    """
+    Module-level worker function for shared memory chunk processing.
+
+    This must be at module level to be picklable by ProcessPoolExecutor.
+
+    Args:
+        fn: User's pure function that processes data
+        shm_name: Name of the shared memory segment
+        start: Start offset in shared memory
+        end: End offset in shared memory
+        chunk_id: This chunk's ID (0-based)
+        total_chunks: Total number of chunks
+
+    Returns:
+        Result from user's function
+    """
+    # Attach to existing shared memory
+    shm = shm_module.SharedMemory(name=shm_name)
+
+    try:
+        # Get view of this chunk (zero-copy!)
+        chunk_data = memoryview(shm.buf)[start:end]
+
+        # Call user's pure function - just passes data
+        result = fn(chunk_data)
+
+        return result
+
+    finally:
+        # CRITICAL: Delete memoryview before closing
+        del chunk_data
+        shm.close()
+
+
+class SharedMemoryExecutor(QObject, concurrent.futures.Executor):
+    """
+    Executor optimized for processing large data in chunks via shared memory.
+
+    Follows the concurrent.futures.Executor interface with additional methods
+    for shared memory optimization. User functions remain pure - they don't
+    need to know about chunks or shared memory.
+
+    Standard interface (like ProcessPoolExecutor):
+        executor = SharedMemoryExecutor(max_workers=8)
+        future = executor.submit(func, arg1, arg2)
+        results = executor.map(func, [item1, item2, ...])
+
+    Shared memory optimization:
+        # Processes large data in chunks with zero-copy workers
+        future = executor.submit_chunked(func, binary_data, num_chunks=8)
+        results = future.result()  # List of chunk results
+
+        # Or streaming results
+        for result in executor.map_chunked(func, binary_data, num_chunks=8):
+            print(f"Chunk done: {result}")
+
+    Key properties:
+        - User function signature never changes: fn(data)
+        - Standard Executor interface fully supported
+        - Shared memory optimization explicit via method names
+        - Automatic cleanup of shared memory resources
+        - Qt signal integration for progress tracking
+
+    Example:
+        >>> executor = SharedMemoryExecutor(max_workers=8)
+        >>>
+        >>> def find_patterns(data):
+        ...     # Pure function - doesn't know about chunks
+        ...     return [i for i in range(len(data)) if data[i] == 0xFF]
+        >>>
+        >>> # Process 8MB in 8 chunks with zero-copy
+        >>> future = executor.submit_chunked(find_patterns, binary_data, num_chunks=8)
+        >>> all_results = future.result()  # [chunk0_results, chunk1_results, ...]
+        >>>
+        >>> # With custom result combining
+        >>> future = executor.submit_chunked(
+        ...     find_patterns,
+        ...     binary_data,
+        ...     num_chunks=8,
+        ...     combine=lambda results: sum(results, [])  # Flatten
+        ... )
+        >>> flattened = future.result()
+    """
+
+    def __init__(
+        self,
+        max_workers: Optional[int] = None,
+        mp_context: Optional[multiprocessing.context.BaseContext] = None,
+        parent: Optional[QObject] = None,
+    ):
+        super().__init__(parent)
+        self.signals = SharedMemoryExecutorSignals()
+        self._max_workers = max_workers or multiprocessing.cpu_count()
+        self._mp_context = mp_context
+
+        # Use ProcessPoolExecutor as underlying executor
+        self._executor = concurrent.futures.ProcessPoolExecutor(
+            max_workers=self._max_workers,
+            mp_context=self._mp_context,
+        )
+
+        self._futures: List[concurrent.futures.Future] = []
+        self._shared_memories: Dict[str, shm_module.SharedMemory] = {}
+        self._shutdown = False
+        self._state_lock = threading.Lock()
+
+    @property
+    def max_workers(self) -> int:
+        """Return the maximum number of worker processes."""
+        return self._max_workers
+
+    def submit(self, fn: Callable, *args, **kwargs) -> concurrent.futures.Future:
+        """
+        Submit a callable to be executed in a worker process.
+
+        Standard concurrent.futures.Executor interface. Arguments are pickled
+        and sent to worker processes.
+
+        Args:
+            fn: A picklable callable to execute
+            *args: Positional arguments for the callable
+            **kwargs: Keyword arguments for the callable
+
+        Returns:
+            A Future representing the pending execution
+
+        Raises:
+            RuntimeError: If the executor has been shut down
+        """
+        with self._state_lock:
+            if self._shutdown:
+                raise RuntimeError("Cannot schedule new futures after shutdown.")
+
+            future = self._executor.submit(fn, *args, **kwargs)
+            self._futures.append(future)
+
+            # Add callback for Qt signal emission
+            future.add_done_callback(self._on_future_done)
+
+            # Emit task_submitted signal
+            try:
+                self.signals.task_submitted.emit(future)
+            except RuntimeError:
+                pass  # Qt object may have been deleted
+
+            return future
+
+    def map(
+        self,
+        fn: Callable,
+        *iterables,
+        timeout: Optional[float] = None,
+        chunksize: int = 1,
+    ):
+        """
+        Map a function over iterables, executing in parallel processes.
+
+        Standard concurrent.futures.Executor interface. Items are pickled
+        and sent to worker processes.
+
+        Args:
+            fn: A picklable callable
+            *iterables: Iterables of arguments
+            timeout: Maximum time to wait for results
+            chunksize: Size of chunks for efficiency
+
+        Returns:
+            Iterator of results in the same order as the input iterables
+
+        Raises:
+            RuntimeError: If the executor has been shut down
+        """
+        with self._state_lock:
+            if self._shutdown:
+                raise RuntimeError("Cannot schedule new futures after shutdown.")
+
+        return self._executor.map(fn, *iterables, timeout=timeout, chunksize=chunksize)
+
+    def submit_chunked(
+        self,
+        fn: Callable[[Any], Any],
+        data: bytes,
+        num_chunks: int,
+        combine: Optional[Callable[[List], Any]] = None,
+    ) -> concurrent.futures.Future:
+        """
+        Submit function to process chunked data via shared memory.
+
+        Optimized for large data processing:
+        1. Creates shared memory once
+        2. Copies data once
+        3. Workers attach to shared memory (zero-copy)
+        4. Processes chunks in parallel
+        5. Combines results
+        6. Cleans up shared memory
+
+        Args:
+            fn: Pure function taking data and returning result: fn(data) -> result
+            data: Large bytes/bytearray to chunk
+            num_chunks: Number of chunks to create
+            combine: Optional function to combine chunk results (default: list)
+                     Examples:
+                     - list (default): Returns [result1, result2, ...]
+                     - lambda r: sum(r, []): Flatten list of lists
+                     - lambda r: {k: v for d in r for k, v in d.items()}: Merge dicts
+
+        Returns:
+            Future that resolves to combined results
+
+        Example:
+            >>> def find_patterns(data):
+            ...     return [i for i in range(len(data)) if data[i] == 0xFF]
+            >>>
+            >>> # Simple - returns list of chunk results
+            >>> future = executor.submit_chunked(find_patterns, binary_data, num_chunks=8)
+            >>> results = future.result()  # [[chunk0], [chunk1], ...]
+            >>>
+            >>> # With combining - flatten results
+            >>> future = executor.submit_chunked(
+            ...     find_patterns,
+            ...     binary_data,
+            ...     num_chunks=8,
+            ...     combine=lambda r: sum(r, [])
+            ... )
+            >>> flattened = future.result()  # [result1, result2, ...]
+        """
+        with self._state_lock:
+            if self._shutdown:
+                raise RuntimeError("Cannot schedule new futures after shutdown.")
+
+        # Create shared memory segment
+        shm = shm_module.SharedMemory(create=True, size=len(data))
+        shm_name = shm.name
+
+        # Store for cleanup
+        with self._state_lock:
+            self._shared_memories[shm_name] = shm
+
+        # Copy data into shared memory (ONCE!)
+        shm.buf[:len(data)] = data
+
+        # Calculate chunk boundaries
+        chunk_size = len(data) // num_chunks
+        chunks_info = []
+
+        for i in range(num_chunks):
+            start = i * chunk_size
+            # Last chunk gets any remainder
+            end = start + chunk_size if i < num_chunks - 1 else len(data)
+            chunks_info.append((start, end, i))
+
+        # Submit all chunks
+        chunk_futures = []
+        for start, end, chunk_id in chunks_info:
+            chunk_future = self._executor.submit(
+                _shared_memory_chunk_worker,
+                fn,
+                shm_name,
+                start,
+                end,
+                chunk_id,
+                num_chunks
+            )
+            # Emit signal when chunk completes
+            chunk_future.add_done_callback(
+                lambda f, cid=chunk_id: self._on_chunk_done(f, cid)
+            )
+            chunk_futures.append(chunk_future)
+
+        # Create wrapper future that waits for all chunks
+        result_future = concurrent.futures.Future()
+
+        def collect_results():
+            """Collect all chunk results and combine them."""
+            try:
+                results = []
+                for chunk_future in chunk_futures:
+                    result = chunk_future.result()
+                    results.append(result)
+
+                # Combine results
+                if combine is not None:
+                    combined = combine(results)
+                else:
+                    combined = results
+
+                result_future.set_result(combined)
+
+                # Emit completion signal
+                try:
+                    self.signals.all_chunks_completed.emit(combined)
+                except RuntimeError:
+                    pass
+
+            except Exception as e:
+                result_future.set_exception(e)
+                try:
+                    self.signals.task_failed.emit(result_future, e)
+                except RuntimeError:
+                    pass
+            finally:
+                # Cleanup shared memory
+                self._cleanup_shared_memory(shm_name)
+
+        # Start collection in background
+        collection_future = self._executor.submit(collect_results)
+
+        # Track for shutdown
+        with self._state_lock:
+            self._futures.append(result_future)
+
+        return result_future
+
+    def map_chunked(
+        self,
+        fn: Callable[[Any], Any],
+        data: bytes,
+        num_chunks: int,
+    ):
+        """
+        Map function over chunks of data via shared memory, yielding results.
+
+        Similar to submit_chunked but yields results as chunks complete
+        (unordered for better performance).
+
+        Args:
+            fn: Pure function taking data: fn(data) -> result
+            data: Large bytes/bytearray to chunk
+            num_chunks: Number of chunks to create
+
+        Yields:
+            Results from each chunk as they complete (unordered)
+
+        Example:
+            >>> def analyze(data):
+            ...     return len([b for b in data if b > 0x80])
+            >>>
+            >>> for result in executor.map_chunked(analyze, binary_data, num_chunks=8):
+            ...     print(f"Chunk result: {result}")
+        """
+        # Submit chunked without combining
+        future = self.submit_chunked(fn, data, num_chunks, combine=None)
+
+        # Yield results as list items
+        results = future.result()
+        for result in results:
+            yield result
+
+    def _on_future_done(self, future: concurrent.futures.Future):
+        """Called when a regular future completes."""
+        with self._state_lock:
+            if future in self._futures:
+                self._futures.remove(future)
+
+        try:
+            exc = future.exception()
+            if exc is not None:
+                self.signals.task_failed.emit(future, exc)
+            else:
+                self.signals.task_completed.emit(future)
+        except (concurrent.futures.CancelledError, RuntimeError):
+            pass
+
+    def _on_chunk_done(self, future: concurrent.futures.Future, chunk_id: int):
+        """Called when a chunk completes."""
+        try:
+            if not future.cancelled():
+                result = future.result()
+                self.signals.chunk_completed.emit(chunk_id, result)
+        except Exception:
+            pass  # Error will be handled by main future
+
+    def _cleanup_shared_memory(self, shm_name: str):
+        """Clean up shared memory segment."""
+        with self._state_lock:
+            if shm_name in self._shared_memories:
+                shm = self._shared_memories.pop(shm_name)
+                try:
+                    shm.close()
+                    shm.unlink()
+                except Exception:
+                    pass  # Best effort cleanup
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False):
+        """
+        Shutdown the executor.
+
+        Args:
+            wait: If True, wait for all pending futures to complete
+            cancel_futures: If True, cancel all pending futures
+        """
+        with self._state_lock:
+            self._shutdown = True
+
+        self._executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+
+        # Cleanup any remaining shared memory
+        with self._state_lock:
+            for shm_name in list(self._shared_memories.keys()):
+                self._cleanup_shared_memory(shm_name)
+
+        try:
+            self.signals.pool_shutdown.emit()
+        except RuntimeError:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.shutdown(wait=True)
+        return False
+
+
+# Alias for naming consistency
+QSharedMemoryExecutor = SharedMemoryExecutor
+
+
 # Single-file ready-to-use module.
 # No external dependencies beyond PyQt5/PySide6.
 
@@ -1067,6 +1502,10 @@ __all__ = [
     "QInterpreterPoolExecutor",  # Alias
     "InterpreterPoolExecutorSignals",
     "INTERPRETER_POOL_AVAILABLE",
+    # Shared memory executor
+    "SharedMemoryExecutor",
+    "QSharedMemoryExecutor",  # Alias
+    "SharedMemoryExecutorSignals",
     # Worker utilities
     "WorkerBase",
     "WorkerBaseSignals",

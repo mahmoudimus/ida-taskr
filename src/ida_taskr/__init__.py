@@ -66,6 +66,9 @@ if QT_ASYNCIO_AVAILABLE:
             InterpreterPoolExecutor,
             QInterpreterPoolExecutor,
             INTERPRETER_POOL_AVAILABLE as _INTERPRETER_POOL_AVAILABLE,
+            # Shared memory executor
+            SharedMemoryExecutor,
+            QSharedMemoryExecutor,
             # Worker utilities
             WorkerBase as QtWorkerBase,
             FunctionWorker,
@@ -96,6 +99,9 @@ if QT_ASYNCIO_AVAILABLE:
             "InterpreterPoolExecutor",
             "QInterpreterPoolExecutor",
             "INTERPRETER_POOL_AVAILABLE",
+            # Shared memory executor
+            "SharedMemoryExecutor",
+            "QSharedMemoryExecutor",
             # Worker utilities
             "QtWorkerBase",
             "FunctionWorker",
