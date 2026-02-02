@@ -138,7 +138,7 @@ class TestGeneratorWorker:
 class TestThreadExecutor:
     """Test ThreadExecutor functionality."""
 
-    def test_create_thread_executor(self):
+    def test_create_thread_executor(self, qapp):
         """Test creating a ThreadExecutor."""
         from ida_taskr import ThreadExecutor
 
@@ -147,7 +147,7 @@ class TestThreadExecutor:
         assert hasattr(executor, 'submit')
         assert hasattr(executor, 'shutdown')
 
-    def test_thread_executor_submit(self):
+    def test_thread_executor_submit(self, qapp):
         """Test submitting a task to ThreadExecutor."""
         from ida_taskr import ThreadExecutor
 
