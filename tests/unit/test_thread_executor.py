@@ -229,7 +229,7 @@ class TestThreadExecutorExceptionHandling:
 
         executor.shutdown(wait=True)
 
-    def test_exception_in_callback(self):
+    def test_exception_in_callback(self, qapp):
         """Test that exceptions in callbacks don't crash the executor."""
         from ida_taskr import ThreadExecutor
 
