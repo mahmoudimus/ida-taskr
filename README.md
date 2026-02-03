@@ -161,6 +161,10 @@ pytest tests/integration/ --cov=src/ida_taskr --cov-report=html
 - ✅ PyQt5 (IDA Pro 9.1)
 - ✅ PySide6 (IDA Pro 9.2+)
 
+### IDA Pro Tests
+
+Some tests require running inside IDA Pro. See [docs/IDA_TESTING.md](docs/IDA_TESTING.md) for detailed instructions.
+
 ## Contributing 🤝
 
 We welcome contributions to `ida-taskr`! Whether it's bug fixes, new features, or documentation improvements, your help is appreciated. Here's how to contribute:
