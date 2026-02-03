@@ -4,8 +4,45 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ida-taskr"
-version = "1.0.0"
-description = "IDA task runner"
+version = "1.0.1"
+description = "A Qt-based multiprocessing framework for IDA Pro parallel computing with simple decorator API"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Mahmoud Abdelkader", email = "mahmoud@linux.com"}
+]
+keywords = [
+    "ida",
+    "ida-pro",
+    "reverse-engineering",
+    "multiprocessing",
+    "parallel",
+    "threading",
+    "background-tasks",
+    "qt",
+    "pyside6",
+    "pyqt5",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Plugins",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Software Development :: Disassemblers",
+]
+
+[project.urls]
+Homepage = "https://github.com/mahmoudimus/ida-taskr"
+Repository = "https://github.com/mahmoudimus/ida-taskr"
+Issues = "https://github.com/mahmoudimus/ida-taskr/issues"
 
 [project.optional-dependencies]
 ci = [
