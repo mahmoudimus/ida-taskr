@@ -7,15 +7,27 @@ but with Qt signal integration for task completion notifications.
 
 import concurrent.futures
 import math
+import multiprocessing
 import time
 import pytest
 
 from ida_taskr import QT_ASYNCIO_AVAILABLE
 
-pytestmark = pytest.mark.skipif(
-    not QT_ASYNCIO_AVAILABLE,
-    reason="QtAsyncio module not available"
-)
+# Use spawn method to avoid fork issues with Qt on some platforms
+# This helps prevent hangs on PySide6 + Python 3.11
+if hasattr(multiprocessing, 'set_start_method'):
+    try:
+        multiprocessing.set_start_method('spawn', force=True)
+    except RuntimeError:
+        pass  # Already set
+
+pytestmark = [
+    pytest.mark.skipif(
+        not QT_ASYNCIO_AVAILABLE,
+        reason="QtAsyncio module not available"
+    ),
+    pytest.mark.timeout(60),  # Prevent indefinite hangs
+]
 
 
 # Module-level functions for multiprocessing (must be picklable)
