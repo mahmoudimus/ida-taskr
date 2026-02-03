@@ -248,6 +248,13 @@ class TestThreadExecutorExceptionHandling:
 
         result = future.result(timeout=5)
         assert result == 10
+
+        # Process Qt events and wait briefly for callback
+        # Callbacks may be executed asynchronously via Qt event loop
+        qapp.processEvents()
+        time.sleep(0.1)
+        qapp.processEvents()
+
         assert len(callback_called) == 1
 
         executor.shutdown(wait=True)
