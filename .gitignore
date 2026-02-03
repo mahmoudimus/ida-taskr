@@ -4,6 +4,10 @@ CODEBASE_ANALYSIS.md
 EXPLORATION_SUMMARY.md
 QTASYNCIO_INTEGRATION_GUIDE.md
 
+# Amalgamated single-file build (generated via scripts/amalgamate.py)
+ida_taskr_amalgamated.py
+src/ida_taskr/ida_taskr_amalgamated.py
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
