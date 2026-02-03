@@ -694,6 +694,13 @@ import multiprocessing
 import multiprocessing.pool
 import queue
 
+# Use spawn context by default to avoid fork+Qt deadlocks on POSIX systems.
+# fork() can cause deadlocks when Qt threads are active (Qt's thread pool holds
+# locks that get copied to child process but the threads that would unlock them
+# don't exist in the child). spawn is already default on Windows and macOS.
+# See: https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods
+_default_mp_context = multiprocessing.get_context('spawn')
+
 
 class ProcessPoolExecutorSignals(QObject):
     """Qt signals for ProcessPoolExecutor events."""
@@ -739,7 +746,8 @@ class ProcessPoolExecutor(QObject, concurrent.futures.Executor):
         super().__init__(parent)
         self.signals = ProcessPoolExecutorSignals()
         self._max_workers = max_workers or multiprocessing.cpu_count()
-        self._mp_context = mp_context
+        # Use spawn context by default to avoid fork+Qt deadlocks
+        self._mp_context = mp_context if mp_context is not None else _default_mp_context
         self._initializer = initializer
         self._initargs = initargs
 
@@ -923,8 +931,10 @@ class InterpreterPoolExecutor(QObject, concurrent.futures.Executor):
         # Use ProcessPoolExecutor as backend for isolation
         # This provides similar benefits to subinterpreters (no GIL contention)
         # while being compatible with embedded Python contexts
+        # Use spawn context to avoid fork+Qt deadlocks
         self._executor = concurrent.futures.ProcessPoolExecutor(
-            max_workers=self._max_workers
+            max_workers=self._max_workers,
+            mp_context=_default_mp_context,
         )
 
         self._futures: List[concurrent.futures.Future] = []
