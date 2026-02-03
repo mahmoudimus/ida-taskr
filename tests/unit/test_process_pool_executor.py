@@ -7,6 +7,7 @@ but with Qt signal integration for task completion notifications.
 
 import concurrent.futures
 import math
+import multiprocessing
 import time
 import pytest
 
@@ -16,6 +17,18 @@ pytestmark = pytest.mark.skipif(
     not QT_ASYNCIO_AVAILABLE,
     reason="QtAsyncio module not available"
 )
+
+
+# Use spawn context to avoid fork issues with Qt threads on Linux
+# fork + Qt threads = potential deadlock (Qt's thread pool holds locks during fork)
+# See: https://docs.python.org/3/library/multiprocessing.html#contexts-and-start-methods
+_spawn_ctx = multiprocessing.get_context('spawn')
+
+
+@pytest.fixture
+def spawn_context():
+    """Provide spawn multiprocessing context for tests."""
+    return _spawn_ctx
 
 
 # Module-level functions for multiprocessing (must be picklable)
@@ -60,7 +73,7 @@ class TestProcessPoolExecutorBasic:
         """Test submitting a single task to ProcessPoolExecutor."""
         from ida_taskr import ProcessPoolExecutor
 
-        with ProcessPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor(max_workers=2, mp_context=_spawn_ctx) as executor:
             future = executor.submit(compute_square, 5)
             result = future.result(timeout=10)
             assert result == 25
@@ -71,7 +84,7 @@ class TestProcessPoolExecutorBasic:
 
         numbers = [1, 2, 3, 4, 5]
 
-        with ProcessPoolExecutor(max_workers=4) as executor:
+        with ProcessPoolExecutor(max_workers=4, mp_context=_spawn_ctx) as executor:
             futures = [executor.submit(compute_square, num) for num in numbers]
             results = [f.result(timeout=10) for f in futures]
 
@@ -81,7 +94,7 @@ class TestProcessPoolExecutorBasic:
         """Test using ProcessPoolExecutor as context manager."""
         from ida_taskr import ProcessPoolExecutor
 
-        with ProcessPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor(max_workers=2, mp_context=_spawn_ctx) as executor:
             future = executor.submit(compute_square, 10)
             result = future.result(timeout=10)
             assert result == 100
@@ -114,7 +127,7 @@ class TestProcessPoolExecutorFactorial:
 
         start_time = time.time()
 
-        with ProcessPoolExecutor(max_workers=4) as executor:
+        with ProcessPoolExecutor(max_workers=4, mp_context=_spawn_ctx) as executor:
             futures = [executor.submit(compute_factorial, num) for num in numbers]
             completed_count = 0
 
@@ -143,7 +156,7 @@ class TestProcessPoolExecutorFactorial:
             20: 2432902008176640000,
         }
 
-        with ProcessPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor(max_workers=2, mp_context=_spawn_ctx) as executor:
             for n, expected in test_cases.items():
                 future = executor.submit(compute_factorial, n)
                 result = future.result(timeout=10)
@@ -174,7 +187,7 @@ class TestProcessPoolExecutorExceptionHandling:
 
         numbers = [1, 2, 3, 4]
 
-        with ProcessPoolExecutor(max_workers=4) as executor:
+        with ProcessPoolExecutor(max_workers=4, mp_context=_spawn_ctx) as executor:
             futures = [executor.submit(faulty_task, num) for num in numbers]
 
             results = []
@@ -197,7 +210,7 @@ class TestProcessPoolExecutorExceptionHandling:
         """Verify exceptions in one task don't affect others."""
         from ida_taskr import ProcessPoolExecutor
 
-        with ProcessPoolExecutor(max_workers=2) as executor:
+        with ProcessPoolExecutor(max_workers=2, mp_context=_spawn_ctx) as executor:
             # Submit a failing task and a succeeding task
             fail_future = executor.submit(faulty_task, 2)
             success_future = executor.submit(compute_square, 5)
@@ -219,7 +232,7 @@ class TestProcessPoolExecutorMap:
 
         numbers = [1, 2, 3, 4, 5]
 
-        with ProcessPoolExecutor(max_workers=4) as executor:
+        with ProcessPoolExecutor(max_workers=4, mp_context=_spawn_ctx) as executor:
             results = list(executor.map(compute_square, numbers, timeout=30))
 
         assert results == [1, 4, 9, 16, 25]
@@ -231,7 +244,7 @@ class TestProcessPoolExecutorMap:
         # Use varying delays to test ordering
         numbers = [5, 1, 3, 2, 4]
 
-        with ProcessPoolExecutor(max_workers=4) as executor:
+        with ProcessPoolExecutor(max_workers=4, mp_context=_spawn_ctx) as executor:
             results = list(executor.map(compute_square, numbers, timeout=30))
 
         # Results should be in same order as input
@@ -245,7 +258,7 @@ class TestProcessPoolExecutorShutdown:
         """Test that shutdown(wait=True) waits for tasks."""
         from ida_taskr import ProcessPoolExecutor
 
-        executor = ProcessPoolExecutor(max_workers=2)
+        executor = ProcessPoolExecutor(max_workers=2, mp_context=_spawn_ctx)
         futures = [executor.submit(slow_task, 0.1) for _ in range(3)]
 
         executor.shutdown(wait=True)
@@ -258,7 +271,7 @@ class TestProcessPoolExecutorShutdown:
         """Test that shutdown prevents new task submissions."""
         from ida_taskr import ProcessPoolExecutor
 
-        executor = ProcessPoolExecutor(max_workers=2)
+        executor = ProcessPoolExecutor(max_workers=2, mp_context=_spawn_ctx)
         executor.shutdown(wait=False)
 
         with pytest.raises(RuntimeError, match="Cannot schedule new futures"):
@@ -272,7 +285,7 @@ class TestProcessPoolExecutorSignals:
         """Test that signals object is available."""
         from ida_taskr import ProcessPoolExecutor
 
-        executor = ProcessPoolExecutor(max_workers=2)
+        executor = ProcessPoolExecutor(max_workers=2, mp_context=_spawn_ctx)
 
         assert hasattr(executor, 'signals')
         assert hasattr(executor.signals, 'task_submitted')
@@ -291,7 +304,7 @@ class TestProcessPoolExecutorSignals:
         def on_completed(future):
             completed_futures.append(future)
 
-        executor = ProcessPoolExecutor(max_workers=2)
+        executor = ProcessPoolExecutor(max_workers=2, mp_context=_spawn_ctx)
         executor.signals.task_completed.connect(on_completed)
 
         future = executor.submit(compute_square, 5)
@@ -319,7 +332,7 @@ class TestProcessPoolExecutorPerformance:
 
         start = time.time()
 
-        with ProcessPoolExecutor(max_workers=4) as executor:
+        with ProcessPoolExecutor(max_workers=4, mp_context=_spawn_ctx) as executor:
             futures = [executor.submit(slow_task, sleep_time) for _ in range(num_tasks)]
             concurrent.futures.wait(futures, timeout=30)
 
@@ -335,7 +348,7 @@ class TestProcessPoolExecutorPerformance:
 
         work_size = 100000
 
-        with ProcessPoolExecutor(max_workers=4) as executor:
+        with ProcessPoolExecutor(max_workers=4, mp_context=_spawn_ctx) as executor:
             futures = [executor.submit(cpu_intensive_task, work_size) for _ in range(4)]
             results = [f.result(timeout=30) for f in futures]
 
@@ -357,7 +370,7 @@ class TestQProcessPoolExecutorAlias:
         """Test using the alias."""
         from ida_taskr import QProcessPoolExecutor
 
-        with QProcessPoolExecutor(max_workers=2) as executor:
+        with QProcessPoolExecutor(max_workers=2, mp_context=_spawn_ctx) as executor:
             future = executor.submit(compute_square, 7)
             result = future.result(timeout=10)
             assert result == 49
