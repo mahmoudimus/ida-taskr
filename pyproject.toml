@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ida-taskr"
-version = "1.0.1"
+version = "1.0.2"
 description = "A Qt-based multiprocessing framework for IDA Pro parallel computing with simple decorator API"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "Mahmoud Abdelkader", email = "mahmoud@linux.com"}
+    {name = "Mahmoud Abdelkader"}
 ]
 keywords = [
     "ida",

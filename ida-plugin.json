@@ -3,7 +3,7 @@
   "plugin": {
     "name": "ida-taskr",
     "entryPoint": "src/ida_taskr/__init__.py",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "description": "A Qt-based multiprocessing framework for IDA Pro that enables parallel computing without blocking the UI. Features simple decorator API (@cpu_task, @parallel, @shared_memory_task), process-based executors, and bidirectional worker IPC.",
     "idaVersions": ">=9.0",
     "license": "MIT",
