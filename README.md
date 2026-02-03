@@ -7,10 +7,10 @@
 IDA Taskr is a pure Python library for IDA Pro parallel computing. It lets you use the power of Qt (built-in to IDA!) and Python's multiprocessing to offload computationally intensive tasks to worker processes without freezing IDA Pro's UI.
 
 **Key Features:**
-- 🚀 Offload heavy processing to worker processes
-- 🔄 Bidirectional IPC communication between IDA and workers
-- 📦 Qt-based process management (QProcess)
-- 🎯 Event-driven message handling
+- 🚀 Simple decorator API - just add `@cpu_task` to run in background
+- 🔄 Process-based parallelism for true multi-core execution
+- 📦 Shared memory support for large binary data
+- 🎯 Qt signal integration for progress callbacks
 - ⚡ Compatible with IDA Pro 9.1 (PyQt5) and 9.2+ (PySide6)
 
 ## Installation
@@ -26,160 +26,217 @@ pip install -e .[pyside6]  # For IDA Pro 9.2+
 
 ## Quick Start
 
-### Basic Example
+### The Simplest Way: `@cpu_task`
 
-Here's a simple example of using `TaskRunner` to offload work to a worker process:
+Add one decorator and your function runs in the background:
+
+```python
+from ida_taskr import cpu_task
+
+@cpu_task
+def analyze_binary(data):
+    """This runs in a background thread - UI stays responsive!"""
+    result = []
+    for byte in data:
+        result.append(process_byte(byte))
+    return result
+
+# Usage - returns immediately!
+future = analyze_binary(binary_data)
+
+# Do other work while it runs...
+
+# Get result when needed
+result = future.result()
+```
+
+That's it. One line. Your function now runs without blocking IDA.
+
+### With Callbacks
+
+Get notified when your task completes:
+
+```python
+from ida_taskr import cpu_task
+
+@cpu_task(on_complete=lambda r: print(f"Done! Found {len(r)} patterns"))
+def find_patterns(data):
+    return scan_for_patterns(data)
+
+# Fire and forget - callback handles the result
+find_patterns(binary_data)
+```
+
+### Parallel Processing
+
+Process multiple items across worker threads:
+
+```python
+from ida_taskr import parallel
+
+@parallel(max_workers=8)
+def analyze_function(func_ea):
+    """Analyze a single function."""
+    return get_function_signature(func_ea)
+
+# Process 100 functions in parallel
+function_addresses = list(idautils.Functions())
+futures = [analyze_function(addr) for addr in function_addresses]
+results = [f.result() for f in futures]
+```
+
+### Large Data with Shared Memory
+
+For large binary blobs (megabytes), use shared memory to avoid copying:
+
+```python
+from ida_taskr import shared_memory_task
+
+@shared_memory_task(num_chunks=8)
+def find_signatures(chunk_data, chunk_id, total_chunks):
+    """
+    Process one chunk of the binary.
+
+    chunk_data: memoryview of this chunk (zero-copy!)
+    chunk_id: which chunk this is (0-7)
+    total_chunks: total number of chunks (8)
+    """
+    signatures = []
+    for i in range(len(chunk_data) - 16):
+        if is_interesting_pattern(chunk_data[i:i+16]):
+            signatures.append(bytes(chunk_data[i:i+16]))
+    return signatures
+
+# ida-taskr handles all shared memory complexity!
+binary_data = ida_bytes.get_bytes(start_ea, size)  # e.g., 8MB
+all_signatures = find_signatures(binary_data)  # Returns list of 8 results
+```
+
+## Decorator Reference
+
+| Decorator | Use Case | Example |
+|-----------|----------|---------|
+| `@cpu_task` | CPU-intensive work | Pattern scanning, signature generation |
+| `@io_task` | I/O-bound work | Network requests, file operations |
+| `@parallel(n)` | Multiple parallel tasks | Batch function analysis |
+| `@background_task` | Full control with callbacks | Progress reporting |
+| `@shared_memory_task` | Large data processing | Multi-MB binary analysis |
+
+### `@background_task` - Full Control
+
+```python
+from ida_taskr import background_task
+
+@background_task(
+    max_workers=4,
+    on_complete=lambda r: print(f"Result: {r}"),
+    on_error=lambda e: print(f"Error: {e}"),
+    on_progress=lambda p, m: print(f"[{p}%] {m}"),
+    executor_type='process'  # 'thread' or 'process'
+)
+def heavy_analysis(data, progress_callback=None):
+    for i, chunk in enumerate(chunks(data, 100)):
+        process(chunk)
+        if progress_callback:
+            progress_callback(i * 10, f"Processed chunk {i}")
+    return "done"
+```
+
+## Advanced Usage
+
+### Direct Executor Access
+
+For more control, use the executors directly:
+
+```python
+from ida_taskr import ProcessPoolExecutor, ThreadExecutor
+
+# Process-based (true parallelism, bypasses GIL)
+with ProcessPoolExecutor(max_workers=4) as executor:
+    futures = [executor.submit(cpu_task, arg) for arg in args]
+    results = [f.result() for f in futures]
+
+# Thread-based (good for IDA SDK calls that release GIL)
+with ThreadExecutor(max_workers=8) as executor:
+    futures = [executor.submit(analyze_func, ea) for ea in function_list]
+    results = [f.result() for f in futures]
+```
+
+### Worker Scripts (Bidirectional IPC)
+
+For complex scenarios requiring persistent workers and bidirectional communication.
+Use this when you need:
+- Long-running worker processes that stay alive between tasks
+- Custom message protocols between IDA and workers
+- Streaming results back to IDA as work progresses
+- Worker state that persists across multiple commands
 
 ```python
 from ida_taskr import TaskRunner
 
-# Create a task runner with your worker script
 runner = TaskRunner(
     worker_script="path/to/worker.py",
     worker_args=["arg1", "arg2"]
 )
 
-# Set up message handlers
-@runner.on('worker_message')
-def handle_message(msg):
-    print(f"Worker said: {msg}")
-
 @runner.on('worker_results')
 def handle_results(results):
     print(f"Results: {results}")
 
-# Start the worker
+@runner.on('worker_message')
+def handle_progress(msg):
+    print(f"Progress: {msg}")
+
 runner.start()
-
-# Send commands to the worker
 runner.send_command({"command": "process", "data": [1, 2, 3]})
-
-# When done
+# Worker stays alive, can send more commands...
+runner.send_command({"command": "analyze", "target": 0x401000})
 runner.stop()
 ```
 
-### Worker Script Example
-
-Your worker script receives commands and sends results back:
-
-```python
-# worker.py
-import sys
-from ida_taskr.worker import WorkerBase
-
-class MyWorker(WorkerBase):
-    def handle_command(self, command):
-        """Process commands from IDA."""
-        if command.get("command") == "process":
-            data = command.get("data", [])
-
-            # Do heavy computation here
-            result = [x * 2 for x in data]
-
-            # Send results back
-            self.send_message({
-                "type": "result",
-                "data": result
-            })
-
-if __name__ == "__main__":
-    worker = MyWorker()
-    worker.run()
-```
-
-### Advanced: Using WorkerLauncher Directly
-
-For more control, use `WorkerLauncher`:
-
-```python
-from ida_taskr.launcher import WorkerLauncher
-from ida_taskr.protocols import MessageEmitter
-
-# Create message emitter for event handling
-emitter = MessageEmitter()
-
-@emitter.on('worker_message')
-def on_message(msg):
-    print(f"Message: {msg}")
-
-@emitter.on('worker_connected')
-def on_connected():
-    print("Worker connected!")
-
-# Create launcher
-launcher = WorkerLauncher(message_emitter=emitter)
-
-# Launch worker process
-launcher.launch_worker(
-    script_path="worker.py",
-    worker_args={"chunk_size": "1024", "mode": "fast"}
-)
-
-# Send commands
-launcher.send_command({"command": "analyze", "ea": 0x401000})
-
-# Stop when done
-launcher.stop_worker()
-```
+See [examples/](examples/) for more detailed examples including:
+- [Ultra minimal example](examples/ultra_minimal.py) - Smallest possible code
+- [Shared memory patterns](examples/shared_memory_parallel_example.py) - Large data processing
+- [Signature generation](examples/signature_generation_example.py) - Real IDA use case
+- [QtAsyncio integration](examples/qtasyncio_event_loop.py) - Async/await support
 
 ## Testing
-
-`ida-taskr` is thoroughly tested across multiple Qt frameworks and Python versions.
-
-### Unit Tests
-
-Unit tests don't require IDA Pro and use mocks where needed:
 
 ```bash
 # Run all unit tests
 ./run_tests.sh
 
-# Or use unittest directly
-python -m unittest discover -s tests/unit -p "test_*.py"
-
-# Run a specific test
-./run_tests.sh test_event_emitter
-```
-
-### Integration Tests
-
-Integration tests verify compatibility with real Qt frameworks:
-
-```bash
-# Install test dependencies
-pip install -e .[ci,pyqt5]    # For PyQt5 tests
-pip install -e .[ci,pyside6]  # For PySide6 tests
-
 # Run Qt integration tests
 pytest tests/integration/test_integration_qt_core.py -v
 
 # Run with coverage
-pytest tests/integration/ --cov=src/ida_taskr --cov-report=html
+pytest tests/ --cov=src/ida_taskr --cov-report=html
 ```
 
-**Supported Qt Frameworks:**
+**Supported Configurations:**
+- ✅ Python 3.11, 3.12, 3.13
 - ✅ PyQt5 (IDA Pro 9.1)
 - ✅ PySide6 (IDA Pro 9.2+)
 
-### IDA Pro Tests
+## Documentation
 
-Some tests require running inside IDA Pro. See [docs/IDA_TESTING.md](docs/IDA_TESTING.md) for detailed instructions.
+- [QtAsyncio Integration](docs/QTASYNCIO.md) - Async/await and event loop details
+- [IDA Testing Guide](docs/IDA_TESTING.md) - Running tests inside IDA Pro
+- [Examples README](examples/README.md) - Comprehensive examples guide
 
 ## Contributing 🤝
 
-We welcome contributions to `ida-taskr`! Whether it's bug fixes, new features, or documentation improvements, your help is appreciated. Here's how to contribute:
+We welcome contributions! See the examples and tests for code style.
 
-1. **Fork the Repository** and clone it locally. 🍴
-2. **Make Your Changes** in a new branch. 🌿
-3. **Run Tests** to ensure everything works (`python3 -m unittest discover -s tests/unit/`). 🧪
-4. **Submit a Pull Request** with a clear description of your changes. 📬
-
-Please follow the coding style and include tests for new functionality. Let's make `ida-taskr` even better together! 💪
+1. Fork the repository
+2. Create a feature branch
+3. Run tests: `./run_tests.sh`
+4. Submit a pull request
 
 ## License 📜
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details. 📄
+MIT License - see [LICENSE](LICENSE) for details.
 
 ## Contact 📧
 
-Have questions, suggestions, or need support? Open an issue on GitHub or reach out to [mahmoudimus](https://github.com/mahmoudimus). I'm happy to help! 😊
+Questions or issues? Open a GitHub issue or reach out to [@mahmoudimus](https://github.com/mahmoudimus).
