@@ -7,15 +7,33 @@ but with Qt signal integration for task completion notifications.
 
 import concurrent.futures
 import math
+import sys
 import time
 import pytest
 
 from ida_taskr import QT_ASYNCIO_AVAILABLE
 
-pytestmark = pytest.mark.skipif(
-    not QT_ASYNCIO_AVAILABLE,
-    reason="QtAsyncio module not available"
-)
+# Check if using PyQt5 (not PySide6)
+try:
+    import PyQt5
+    _USING_PYQT5 = True
+except ImportError:
+    _USING_PYQT5 = False
+
+# Skip on PyQt5 + Python 3.12+ due to multiprocessing/spawn compatibility issues
+# that cause hangs in CI. PySide6 works fine with all Python versions.
+_PYQT5_PY312_ISSUE = _USING_PYQT5 and sys.version_info >= (3, 12)
+
+pytestmark = [
+    pytest.mark.skipif(
+        not QT_ASYNCIO_AVAILABLE,
+        reason="QtAsyncio module not available"
+    ),
+    pytest.mark.skipif(
+        _PYQT5_PY312_ISSUE,
+        reason="PyQt5 + Python 3.12+ has multiprocessing spawn issues in CI"
+    ),
+]
 
 
 # Module-level functions for multiprocessing (must be picklable)
