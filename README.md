@@ -15,14 +15,22 @@ IDA Taskr is a pure Python library for IDA Pro parallel computing. It lets you u
 
 ## Installation
 
-```bash
-# Install from source
-pip install -e .
+**Option 1: Single file (no install needed)**
 
-# With Qt support (choose based on your IDA version)
+Download [`ida_taskr_amalgamated.py`](https://github.com/mahmoudimus/ida-taskr/releases/latest) and drop into IDA's plugins folder. That's it - one file, zero dependencies!
+
+**Option 2: pip install**
+```bash
+pip install ida-taskr
+
+# Or from source with Qt support
 pip install -e .[pyqt5]    # For IDA Pro 9.1
 pip install -e .[pyside6]  # For IDA Pro 9.2+
 ```
+
+**Option 3: IDA Plugin Manager (HCLI)**
+
+Download [`ida-taskr-{version}.zip`](https://github.com/mahmoudimus/ida-taskr/releases/latest) and install via HCLI.
 
 ## Quick Start
 

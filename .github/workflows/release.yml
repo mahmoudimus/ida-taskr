@@ -1,62 +1,28 @@
-name: Release
+name: Build and Release
 
 on:
-  release:
-    types: [published]
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       dry_run:
-        description: 'Dry run (do not upload assets)'
+        description: 'Dry run (do not publish to PyPI)'
         required: false
-        default: 'true'
+        default: true
         type: boolean
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
-  build-amalgamated:
+  build-and-release:
+    name: Build and Release
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Generate amalgamated file
-        run: |
-          python scripts/amalgamate.py --output ida_taskr_amalgamated.py
-          echo "Generated ida_taskr_amalgamated.py"
-          head -20 ida_taskr_amalgamated.py
-          wc -l ida_taskr_amalgamated.py
-
-      - name: Verify amalgamated file syntax
-        run: |
-          python -m py_compile ida_taskr_amalgamated.py
-          echo "Syntax check passed"
-
-      - name: Upload amalgamated file as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ida_taskr_amalgamated
-          path: ida_taskr_amalgamated.py
-          retention-days: 30
-
-      - name: Upload to release
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == 'false')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: ida_taskr_amalgamated.py
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-wheel:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -66,23 +32,86 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          pip install --upgrade pip build wheel
+          python -m pip install --upgrade pip
+          pip install build wheel setuptools
 
-      - name: Build package
+      - name: Build Python package
+        run: python -m build
+
+      - name: Extract version from tag
+        id: get_version
         run: |
-          python -m build
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION="dev-$(date +%Y%m%d)"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Version: ${VERSION}"
 
-      - name: Upload wheel as artifact
+      - name: Generate amalgamated file
+        run: |
+          python scripts/amalgamate.py --output ida_taskr_amalgamated.py
+          echo "Generated ida_taskr_amalgamated.py"
+          wc -l ida_taskr_amalgamated.py
+
+      - name: Verify amalgamated file syntax
+        run: |
+          python -m py_compile ida_taskr_amalgamated.py
+          echo "Syntax check passed"
+
+      - name: Create HCLI plugin archive
+        run: |
+          mkdir -p ida-taskr-plugin/src/ida_taskr
+
+          # Copy source files
+          cp -r src/ida_taskr/* ida-taskr-plugin/src/ida_taskr/
+
+          # Copy metadata and documentation
+          cp ida-plugin.json ida-taskr-plugin/
+          cp LICENSE ida-taskr-plugin/
+          cp README.md ida-taskr-plugin/
+
+          # Include amalgamated file
+          cp ida_taskr_amalgamated.py ida-taskr-plugin/
+
+          # Create archive
+          cd ida-taskr-plugin
+          zip -r ../ida-taskr-${{ steps.get_version.outputs.version }}.zip .
+          cd ..
+
+          # Also create a latest version for convenience
+          cp ida-taskr-${{ steps.get_version.outputs.version }}.zip ida-taskr-latest.zip
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: ida-taskr-release
+          path: |
+            ida-taskr-*.zip
+            ida_taskr_amalgamated.py
+            dist/
           retention-days: 30
 
-      - name: Upload to release
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == 'false')
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: |
+            ida-taskr-${{ steps.get_version.outputs.version }}.zip
+            ida-taskr-latest.zip
+            ida_taskr_amalgamated.py
+            dist/*.whl
+            dist/*.tar.gz
+          generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to PyPI
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+          skip-existing: true
