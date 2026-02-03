@@ -13,8 +13,19 @@ import uuid
 from .helpers import get_logger
 from .protocols import WorkerProtocol
 from .utils import AsyncEventEmitter, IntervalSet
+from .qt_compat import QT_ASYNCIO_AVAILABLE
 
 logger = get_logger()
+
+# Try to import QtAsyncio components if available
+if QT_ASYNCIO_AVAILABLE:
+    try:
+        from .qtasyncio import set_event_loop_policy as qt_set_event_loop_policy
+        QTASYNCIO_ENABLED = True
+    except ImportError:
+        QTASYNCIO_ENABLED = False
+else:
+    QTASYNCIO_ENABLED = False
 
 
 class ConnectionContext:
@@ -133,11 +144,25 @@ class ConnectionContext:
 
 
 class WorkerController:
-    """Wrap an AsyncEventEmitter in its own event loop"""
+    """Wrap an AsyncEventEmitter in its own event loop
 
-    def __init__(self, emitter_instance: AsyncEventEmitter):
+    Optionally uses QtAsyncio for better Qt integration if available.
+    Set use_qtasyncio=True to enable Qt-native asyncio event loop.
+    """
+
+    def __init__(self, emitter_instance: AsyncEventEmitter, use_qtasyncio: bool = False):
         self.emitter = emitter_instance
-        self.loop = asyncio.new_event_loop()
+        self.use_qtasyncio = use_qtasyncio and QTASYNCIO_ENABLED
+
+        if self.use_qtasyncio:
+            # Use Qt-native asyncio event loop
+            logger.info("Using QtAsyncio event loop for worker")
+            qt_set_event_loop_policy()
+            self.loop = asyncio.new_event_loop()
+        else:
+            # Use standard asyncio event loop
+            self.loop = asyncio.new_event_loop()
+
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._result = None
         self._started = False

@@ -6,23 +6,31 @@ the MessageEmitter pattern.
 """
 
 import logging
-import unittest
 from unittest.mock import MagicMock, Mock, patch
 
-from ida_taskr import MessageEmitter, WorkerLauncher, get_logger
+import pytest
+
+from ida_taskr import MessageEmitter, get_logger, is_ida
+from ida_taskr.qt_compat import QT_AVAILABLE
+
+# Import WorkerLauncher only if Qt is available
+if QT_AVAILABLE:
+    from ida_taskr import WorkerLauncher
+else:
+    WorkerLauncher = None
 
 logger = get_logger(__name__)
 
 
-class TestMessageEmitter(unittest.TestCase):
+class TestMessageEmitter:
     """Test suite for MessageEmitter event handling."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures before each test method."""
         self.emitter = MessageEmitter()
         self.test_events = []
 
-    def tearDown(self):
+    def teardown_method(self):
         """Clean up after each test method."""
         self.test_events.clear()
 
@@ -57,16 +65,12 @@ class TestMessageEmitter(unittest.TestCase):
         self.emitter.emit_worker_disconnected()
 
         # Verify all events were captured
-        self.assertEqual(len(self.test_events), 5)
-        self.assertIn("connected", self.test_events)
-        self.assertIn(
-            "message: {'type': 'progress', 'progress': 0.5}", self.test_events
-        )
-        self.assertIn(
-            "results: {'status': 'success', 'results': [1, 2, 3]}", self.test_events
-        )
-        self.assertIn("error: Test error", self.test_events)
-        self.assertIn("disconnected", self.test_events)
+        assert len(self.test_events) == 5
+        assert "connected" in self.test_events
+        assert "message: {'type': 'progress', 'progress': 0.5}" in self.test_events
+        assert "results: {'status': 'success', 'results': [1, 2, 3]}" in self.test_events
+        assert "error: Test error" in self.test_events
+        assert "disconnected" in self.test_events
 
     def test_direct_event_registration(self):
         """Test alternative way to register handlers directly without decorators."""
@@ -103,12 +107,12 @@ class TestMessageEmitter(unittest.TestCase):
         self.emitter.emit_worker_disconnected()
 
         # Verify events were handled
-        self.assertEqual(len(self.test_events), 5)
-        self.assertIn("worker_connected", self.test_events)
-        self.assertIn(f"worker_message: {test_message}", self.test_events)
-        self.assertIn(f"worker_results: {test_results}", self.test_events)
-        self.assertIn("worker_error: Connection timeout", self.test_events)
-        self.assertIn("worker_disconnected", self.test_events)
+        assert len(self.test_events) == 5
+        assert "worker_connected" in self.test_events
+        assert f"worker_message: {test_message}" in self.test_events
+        assert f"worker_results: {test_results}" in self.test_events
+        assert "worker_error: Connection timeout" in self.test_events
+        assert "worker_disconnected" in self.test_events
 
     def test_multiple_subscribers_same_event(self):
         """Test multiple handlers for the same event."""
@@ -131,10 +135,10 @@ class TestMessageEmitter(unittest.TestCase):
         self.emitter.emit_worker_results(test_results)
 
         # Verify all handlers were called
-        self.assertEqual(len(results_log), 3)
-        self.assertIn("logged: 5", results_log)
-        self.assertIn("processed", results_log)
-        self.assertIn("ui_updated", results_log)
+        assert len(results_log) == 3
+        assert "logged: 5" in results_log
+        assert "processed" in results_log
+        assert "ui_updated" in results_log
 
     def test_progress_message_handling(self):
         """Test handling of progress messages specifically."""
@@ -156,8 +160,8 @@ class TestMessageEmitter(unittest.TestCase):
         self.emitter.emit_worker_message({"type": "progress", "progress": 1.0})
 
         # Verify only progress messages were processed
-        self.assertEqual(len(progress_events), 4)
-        self.assertEqual(progress_events, [25.0, 50.0, 75.0, 100.0])
+        assert len(progress_events) == 4
+        assert progress_events == [25.0, 50.0, 75.0, 100.0]
 
     def test_error_handling(self):
         """Test error event handling."""
@@ -173,14 +177,15 @@ class TestMessageEmitter(unittest.TestCase):
         self.emitter.emit_worker_error("Invalid data format")
 
         # Verify all errors were captured
-        self.assertEqual(len(error_messages), 3)
-        self.assertIn("Connection failed", error_messages)
-        self.assertIn("Processing timeout", error_messages)
-        self.assertIn("Invalid data format", error_messages)
+        assert len(error_messages) == 3
+        assert "Connection failed" in error_messages
+        assert "Processing timeout" in error_messages
+        assert "Invalid data format" in error_messages
 
+    @pytest.mark.skipif(not is_ida(), reason="WorkerLauncher requires IDA Pro's Qt application")
     @patch("ida_taskr.launcher.WorkerLauncher.launch_worker")
     def test_worker_launcher_integration(self, mock_launch_worker):
-        """Test integration with WorkerLauncher."""
+        """Test integration with WorkerLauncher (IDA Pro only)."""
         # Configure the mock
         mock_launch_worker.return_value = True
 
@@ -204,7 +209,7 @@ class TestMessageEmitter(unittest.TestCase):
         result = launcher.launch_worker("path/to/test/worker.py", worker_args)
 
         # Verify launcher was called correctly
-        self.assertTrue(result)
+        assert result is True
         mock_launch_worker.assert_called_once_with(
             "path/to/test/worker.py", worker_args
         )
@@ -213,7 +218,7 @@ class TestMessageEmitter(unittest.TestCase):
         message_emitter.emit_worker_connected()
         message_emitter.emit_worker_disconnected()
 
-        self.assertEqual(connection_events, ["connected", "disconnected"])
+        assert connection_events == ["connected", "disconnected"]
 
     def test_results_processing(self):
         """Test processing of worker results."""
@@ -236,7 +241,7 @@ class TestMessageEmitter(unittest.TestCase):
         )
 
         # Verify only successful results were processed
-        self.assertEqual(processed_results, ["item1", "item2", "item3"])
+        assert processed_results == ["item1", "item2", "item3"]
 
     def test_no_handlers_registered(self):
         """Test that emitting events with no handlers doesn't cause errors."""
@@ -260,21 +265,12 @@ class TestMessageEmitter(unittest.TestCase):
             raise Exception("Handler failed")
 
         # The current implementation propagates exceptions, so we expect one
-        with self.assertRaises(Exception) as context:
+        with pytest.raises(Exception) as exc_info:
             self.emitter.emit_worker_message({"test": "message"})
 
-        self.assertEqual(str(context.exception), "Handler failed")
+        assert str(exc_info.value) == "Handler failed"
 
         # Due to the way Python sets work, handler order is not guaranteed.
         # The exception will stop execution, so we can only guarantee the exception was raised.
         # We cannot guarantee which handlers ran before the failing one.
-        self.assertTrue(True)  # If we got here, the exception was properly propagated
-
-
-if __name__ == "__main__":
-    # Configure logging for tests
-    logging.basicConfig(
-        level=logging.INFO, format="%(levelname)s - %(name)s - %(message)s"
-    )
-
-    unittest.main()
+        assert True  # If we got here, the exception was properly propagated

@@ -121,6 +121,18 @@ def get_qt_version():
     return QT_VERSION
 
 
+# QtAsyncio module availability
+QT_ASYNCIO_AVAILABLE = False
+qtasyncio = None
+
+if QT_AVAILABLE:
+    try:
+        from . import qtasyncio
+        QT_ASYNCIO_AVAILABLE = True
+    except ImportError:
+        pass
+
+
 __all__ = [
     "QtCore",
     "Signal",
@@ -131,4 +143,6 @@ __all__ = [
     "QProcessEnvironment",
     "get_qt_api",
     "get_qt_version",
+    "QT_ASYNCIO_AVAILABLE",
+    "qtasyncio",
 ]

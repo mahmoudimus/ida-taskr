@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (do not upload assets)'
+        required: false
+        default: 'true'
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build-amalgamated:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate amalgamated file
+        run: |
+          python scripts/amalgamate.py --output ida_taskr_amalgamated.py
+          echo "Generated ida_taskr_amalgamated.py"
+          head -20 ida_taskr_amalgamated.py
+          wc -l ida_taskr_amalgamated.py
+
+      - name: Verify amalgamated file syntax
+        run: |
+          python -m py_compile ida_taskr_amalgamated.py
+          echo "Syntax check passed"
+
+      - name: Upload amalgamated file as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ida_taskr_amalgamated
+          path: ida_taskr_amalgamated.py
+          retention-days: 30
+
+      - name: Upload to release
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == 'false')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ida_taskr_amalgamated.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          pip install --upgrade pip build wheel
+
+      - name: Build package
+        run: |
+          python -m build
+
+      - name: Upload wheel as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 30
+
+      - name: Upload to release
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.dry_run == 'false')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

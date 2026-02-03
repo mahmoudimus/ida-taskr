@@ -7,7 +7,8 @@ import multiprocessing.shared_memory
 import os
 import pathlib
 import sys
-import unittest
+
+import pytest
 
 # Only import idapro if we're not running inside IDA already
 if not any(sys.executable.endswith(x) for x in ["ida.exe", "ida64.exe", "idaq.exe", "idaq64.exe"]):
@@ -15,7 +16,7 @@ if not any(sys.executable.endswith(x) for x in ["ida.exe", "ida64.exe", "idaq.ex
         import idapro  # isort: ignore
     except ImportError:
         # Skip this entire test module if idapro is not available
-        raise unittest.SkipTest("idapro module not available - skipping anti_deob tests")
+        pytest.skip("idapro module not available - skipping anti_deob tests", allow_module_level=True)
 
 from ida_taskr import helpers
 
@@ -120,6 +121,7 @@ def load_and_generate_tests(cls):
             # Create a new function that calls the original test method
             # We use a closure to capture the original_method
             def make_test_runner(method_to_run):
+                @pytest.mark.asyncio
                 async def test_runner(self):
                     await method_to_run(self)
 
@@ -136,7 +138,7 @@ def load_and_generate_tests(cls):
 
 
 @load_and_generate_tests
-class TestAsyncDeobfuscator(unittest.IsolatedAsyncioTestCase):
+class TestAsyncDeobfuscator:
     """
     Test the AsyncDeobfuscator stages and ensure final chains match
     the patch addresses discovered by execute_action.
@@ -145,15 +147,17 @@ class TestAsyncDeobfuscator(unittest.IsolatedAsyncioTestCase):
     # Class attribute to store loaded JSON data
     json_data = None
 
-    def setUp(self):
+    def setup_method(self, method):
         # Extract routine address from the test method name (e.g., test_stage1_non_empty_0x141887cbd)
-        test_id_parts = self.id().split(".")[-1].split("_")
+        test_name = method.__name__
+        test_id_parts = test_name.split("_")
+
         addr_str = str(
             int(test_id_parts[-1], 16)
         )  # Get the last part (address) and convert to decimal string key
 
         if self.json_data is None or addr_str not in self.json_data:
-            self.fail(f"Address {addr_str} not found in JSON data.")
+            pytest.fail(f"Address {addr_str} not found in JSON data.")
 
         # Define EA range based on the parsed address
         routine = self.json_data[addr_str]
@@ -187,7 +191,7 @@ class TestAsyncDeobfuscator(unittest.IsolatedAsyncioTestCase):
             # executor=concurrent.futures.ProcessPoolExecutor(max_workers=1),
         )
 
-    def tearDown(self):
+    def teardown_method(self):
         self._shared_memory.close()
 
         # now tear down the shared memory itself (only the creator should do this)
@@ -206,7 +210,3 @@ class TestAsyncDeobfuscator(unittest.IsolatedAsyncioTestCase):
             self.start_ea,
             [hex(a) for a in actual_addresses],
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

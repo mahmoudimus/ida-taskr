@@ -6,8 +6,9 @@ import asyncio  # Add asyncio for Event
 import os
 import sys
 import typing  # Import typing for cast
-import unittest
 from unittest.mock import Mock, patch
+
+import pytest
 
 # Add the src directory to the path for testing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -35,10 +36,10 @@ class DummyAsyncEmitter(AsyncEventEmitter):
         await asyncio.sleep(0)
 
 
-class TestWorkerCommands(unittest.TestCase):
+class TestWorkerCommands:
     """Test suite for WorkerBase command handling."""
 
-    def setUp(self):
+    def setup_method(self):
         """Set up test fixtures."""
         self.worker = WorkerBase(
             async_emitter_class=DummyAsyncEmitter, emitter_args={"test_arg": 123}
@@ -72,14 +73,14 @@ class TestWorkerCommands(unittest.TestCase):
         worker = WorkerBase(async_emitter_class=DummyAsyncEmitter, emitter_args={})
         worker.setup()
 
-        self.assertIn("stop", worker._commands)
-        self.assertIn("pause", worker._commands)
-        self.assertIn("resume", worker._commands)
-        self.assertFalse(worker._running)
-        self.assertIsNotNone(worker.emitter_instance)
-        self.assertIsInstance(worker.emitter_instance, DummyAsyncEmitter)  # Verify type
+        assert "stop" in worker._commands
+        assert "pause" in worker._commands
+        assert "resume" in worker._commands
+        assert not worker._running
+        assert worker.emitter_instance is not None
+        assert isinstance(worker.emitter_instance, DummyAsyncEmitter)  # Verify type
         emitter = typing.cast(DummyAsyncEmitter, worker.emitter_instance)
-        self.assertFalse(emitter.pause_evt.is_set())
+        assert not emitter.pause_evt.is_set()
 
     def test_handle_command_with_valid_command(self):
         """Test handling valid commands."""
@@ -90,7 +91,7 @@ class TestWorkerCommands(unittest.TestCase):
 
         result = self.worker.handle_command(cmd, self.mock_conn)
 
-        self.assertFalse(result)  # stop should return False to exit
+        assert not result  # stop should return False to exit
         self.mock_conn.send_message.assert_called_with(
             "status", "stopped", status="stopped"
         )
@@ -101,7 +102,7 @@ class TestWorkerCommands(unittest.TestCase):
         cmd = {"command": "unknown_command"}
         result = self.worker.handle_command(cmd, self.mock_conn)
 
-        self.assertTrue(result)  # unknown commands should return True to continue
+        assert result  # unknown commands should return True to continue
         self.mock_conn.send_message.assert_not_called()
 
     def test_handle_command_with_missing_command(self):
@@ -109,7 +110,7 @@ class TestWorkerCommands(unittest.TestCase):
         cmd = {"other_field": "value"}
         result = self.worker.handle_command(cmd, self.mock_conn)
 
-        self.assertTrue(result)  # missing command should return True to continue
+        assert result  # missing command should return True to continue
         self.mock_conn.send_message.assert_not_called()
 
     def test_handle_command_with_none_command(self):
@@ -117,7 +118,7 @@ class TestWorkerCommands(unittest.TestCase):
         cmd = {"command": None}
         result = self.worker.handle_command(cmd, self.mock_conn)
 
-        self.assertTrue(result)  # None command should return True to continue
+        assert result  # None command should return True to continue
         self.mock_conn.send_message.assert_not_called()
 
     def test_handle_stop_command(self):
@@ -128,8 +129,8 @@ class TestWorkerCommands(unittest.TestCase):
 
         result = self.worker._handle_stop(cmd, self.mock_conn)
 
-        self.assertFalse(result)  # stop should return False
-        self.assertFalse(self.worker._running)  # _running is set by this handler
+        assert not result  # stop should return False
+        assert not self.worker._running  # _running is set by this handler
         self.mock_conn.send_message.assert_called_with(
             "status", "stopped", status="stopped"
         )  # Ensure status kwarg
@@ -144,9 +145,9 @@ class TestWorkerCommands(unittest.TestCase):
 
         result = self.worker._handle_pause(cmd, self.mock_conn)
 
-        self.assertTrue(result)  # pause should return True to continue
+        assert result  # pause should return True to continue
         emitter = typing.cast(DummyAsyncEmitter, self.worker.emitter_instance)
-        self.assertTrue(emitter.pause_evt.is_set())  # Check via emitter
+        assert emitter.pause_evt.is_set()  # Check via emitter
         self.mock_conn.send_message.assert_called_with(
             "status", "paused", status="paused"
         )  # Ensure status kwarg
@@ -163,8 +164,8 @@ class TestWorkerCommands(unittest.TestCase):
         cmd = {"command": "resume"}
         result = self.worker._handle_resume(cmd, self.mock_conn)
 
-        self.assertTrue(result)  # resume should return True to continue
-        self.assertFalse(emitter.pause_evt.is_set())  # Check via emitter
+        assert result  # resume should return True to continue
+        assert not emitter.pause_evt.is_set()  # Check via emitter
         self.mock_conn.send_message.assert_called_with(
             "status", "resumed", status="running"
         )  # Ensure status kwarg
@@ -173,9 +174,9 @@ class TestWorkerCommands(unittest.TestCase):
     def test_command_sequence(self):
         """Test a sequence of commands."""
         # Initially
-        self.assertFalse(self.worker._running)
+        assert not self.worker._running
         emitter = typing.cast(DummyAsyncEmitter, self.worker.emitter_instance)
-        self.assertFalse(emitter.pause_evt.is_set())
+        assert not emitter.pause_evt.is_set()
 
         # Simulate worker being started for pause/resume to make sense via controller
         # The 'start' command itself would set up the controller in WorkerBase
@@ -185,24 +186,22 @@ class TestWorkerCommands(unittest.TestCase):
         # Pause the worker
         pause_cmd = {"command": "pause"}
         result = self.worker.handle_command(pause_cmd, self.mock_conn)
-        self.assertTrue(result)
-        self.assertTrue(emitter.pause_evt.is_set())
+        assert result
+        assert emitter.pause_evt.is_set()
         self.mock_controller.pause.assert_called_once()
 
         # Resume the worker
         resume_cmd = {"command": "resume"}
         result = self.worker.handle_command(resume_cmd, self.mock_conn)
-        self.assertTrue(result)
-        self.assertFalse(emitter.pause_evt.is_set())
+        assert result
+        assert not emitter.pause_evt.is_set()
         self.mock_controller.resume.assert_called_once()
 
         # Stop the worker
         stop_cmd = {"command": "stop"}
         result = self.worker.handle_command(stop_cmd, self.mock_conn)
-        self.assertFalse(result)
-        self.assertFalse(
-            self.worker._running
-        )  # Check _running state directly set by _handle_stop
+        assert not result
+        assert not self.worker._running  # Check _running state directly set by _handle_stop
         self.mock_controller.stop.assert_called_once()  # Controller's stop should be called
 
     def test_multiple_connection_messages(self):
@@ -268,7 +267,7 @@ class TestWorkerCommands(unittest.TestCase):
             )
 
 
-class TestWorkerBaseExtension(unittest.TestCase):
+class TestWorkerBaseExtension:
     """Test extending WorkerBase with custom commands."""
 
     def test_custom_command_extension(self):
@@ -293,14 +292,14 @@ class TestWorkerBaseExtension(unittest.TestCase):
         cmd = {"command": "custom"}
         result = worker.handle_command(cmd, mock_conn)
 
-        self.assertTrue(result)
-        self.assertTrue(worker.custom_called)
+        assert result
+        assert worker.custom_called
         mock_conn.send_message.assert_called_with("status", "custom_executed")
 
         # Test that standard commands still work
         stop_cmd = {"command": "stop"}
         result = worker.handle_command(stop_cmd, mock_conn)
-        self.assertFalse(result)
+        assert not result
 
     def test_override_standard_command(self):
         """Test overriding a standard command."""
@@ -324,14 +323,10 @@ class TestWorkerBaseExtension(unittest.TestCase):
         cmd = {"command": "stop"}
         result = worker.handle_command(cmd, mock_conn)
 
-        self.assertFalse(result)  # Should still return False to exit
-        self.assertTrue(worker.custom_stop_called)
+        assert not result  # Should still return False to exit
+        assert worker.custom_stop_called
         mock_conn.send_message.assert_called_with("status", "custom_stopped")
 
         # Verify the original stop behavior is not called
         # (worker._running should not be set to False by the original handler)
         # Since we overrode it, the custom implementation controls the behavior
-
-
-if __name__ == "__main__":
-    unittest.main()

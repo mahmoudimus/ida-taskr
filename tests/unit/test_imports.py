@@ -1,16 +1,10 @@
-import unittest
+"""Test basic imports."""
 
 
-class TestImports(unittest.TestCase):
+class TestImports:
     def test_taskrunner_import(self):
-        try:
-            from ida_taskr import TaskRunner
+        """Test that TaskRunner can be imported."""
+        from ida_taskr import TaskRunner
 
-            print("✅ TaskRunner imported successfully")
-        except ImportError:
-            print("❌ TaskRunner import failed")
-            self.fail("TaskRunner import failed")
+        assert TaskRunner is not None
 
-
-if __name__ == "__main__":
-    unittest.main()
