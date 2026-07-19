@@ -20,6 +20,31 @@ concurrency:
     cancel-in-progress: true
 
 jobs:
+    hcli-lint:
+        name: HCLI plugin archive validation
+        runs-on: ubuntu-24.04
+        steps:
+            - name: Checkout plugin source
+              uses: actions/checkout@v5
+              with:
+                  persist-credentials: false
+
+            - name: Validate HCLI metadata
+              run: |
+                  curl -LsSf --retry 3 \
+                    https://github.com/HexRaysSA/ida-hcli/releases/download/v0.18.5/hcli-linux-x86_64-0.18.5 \
+                    -o /tmp/hcli
+                  echo "b35eb351ce9e706709212604f937118643eee861bf4411bc4cac94217245b277  /tmp/hcli" \
+                    | sha256sum --check
+                  chmod 0755 /tmp/hcli
+                  curl -LsSf --retry 3 \
+                    https://raw.githubusercontent.com/HexRaysSA/plugin-repository/3cee9691f72459c5ac75b028c827016e93e58923/plugin-repository.json \
+                    -o /tmp/plugin-repository-v1.json
+                  python3 tools/sync_plugin_version.py --check
+                  python3 tools/build_hcli_archive.py --output /tmp/ida-taskr-hcli.zip
+                  /tmp/hcli plugin --repo /tmp/plugin-repository-v1.json lint .
+                  /tmp/hcli plugin --repo /tmp/plugin-repository-v1.json lint /tmp/ida-taskr-hcli.zip
+
     unit-tests:
         runs-on: ubuntu-24.04
         strategy:
@@ -43,7 +68,7 @@ jobs:
             - name: Install dependencies
               run: |
                   pip install --upgrade pip setuptools wheel uv
-                  uv pip install --system -e .[tests,${{ matrix.qt-framework }}]
+                  uv pip install --system -e ".[tests,${{ matrix.qt-framework }}]"
 
             - name: Python unit tests
               run: |
@@ -74,7 +99,7 @@ jobs:
             - name: Install Python dependencies
               run: |
                   pip install --upgrade pip setuptools wheel
-                  pip install -e .[tests,ci,${{ matrix.qt-framework }}]
+                  pip install -e ".[tests,ci,${{ matrix.qt-framework }}]"
 
             - name: Run Qt Core integration tests
               run: |

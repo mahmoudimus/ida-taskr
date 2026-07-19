@@ -108,4 +108,4 @@ if QT_ASYNCIO_AVAILABLE:
         # QtAsyncio module not available
         pass
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Keep the package version, HCLI manifest version, and HCLI dependency aligned.
+
+if command -v python3 >/dev/null 2>&1; then
+    if python3 tools/sync_plugin_version.py; then
+        if ! git diff --quiet -- pyproject.toml ida-plugin.json; then
+            git add pyproject.toml ida-plugin.json
+            echo "pre-commit: synced package and HCLI metadata"
+        fi
+    else
+        echo "pre-commit: sync_plugin_version.py failed; aborting commit" >&2
+        exit 1
+    fi
+else
+    echo "pre-commit: python3 not found; skipping version synchronization" >&2
+fi

@@ -30,7 +30,25 @@ pip install -e .[pyside6]  # For IDA Pro 9.2+
 
 **Option 3: IDA Plugin Manager (HCLI)**
 
-Download [`ida-taskr-{version}.zip`](https://github.com/mahmoudimus/ida-taskr/releases/latest) and install via HCLI.
+Install [HCLI](https://hcli.docs.hex-rays.com/) once, then search for and
+install Taskr:
+
+```bash
+hcli plugin search ida-taskr
+hcli plugin install ida-taskr
+```
+
+HCLI installs the plugin under `$IDAUSR/plugins/ida-taskr` and first installs
+the matching `ida-taskr` package into IDA's Python environment. IDA provides
+the Qt bindings, so no PyQt or PySide package is installed separately. Restart
+IDA after the command completes.
+
+For embedding or a non-HCLI installation, install the package with the Python
+interpreter IDA uses:
+
+```bash
+python -m pip install ida-taskr
+```
 
 ## Quick Start
 
