@@ -4,10 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ida-taskr"
-version = "1.0.2"
+version = "1.0.3"
 description = "A Qt-based multiprocessing framework for IDA Pro parallel computing with simple decorator API"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [
     {name = "Mahmoud Abdelkader"}
@@ -28,7 +29,6 @@ classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Plugins",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",

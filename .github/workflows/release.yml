@@ -1,117 +1,129 @@
-name: Build and Release
+name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Dry run (do not publish to PyPI)'
-        required: false
-        default: true
-        type: boolean
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: "Release tag name (for example, v1.0.3)"
+                required: true
+                type: string
+            publish:
+                description: "Create the GitHub release and publish to PyPI"
+                required: true
+                default: false
+                type: boolean
+
+concurrency:
+    group: ${{ github.workflow }}-${{ inputs.tag || github.ref || github.run_id }}
+    cancel-in-progress: true
 
 permissions:
-  contents: write
-  id-token: write
+    contents: write
 
 jobs:
-  build-and-release:
-    name: Build and Release
-    runs-on: ubuntu-latest
+    release:
+        runs-on: ubuntu-latest
+        outputs:
+            publish: ${{ steps.guard.outputs.already == 'false' && (github.event_name == 'push' || inputs.publish == true) }}
+        steps:
+            - name: Resolve release tag
+              id: version
+              env:
+                  REQUESTED_TAG: ${{ inputs.tag }}
+              run: |
+                  if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+                    TAG="$REQUESTED_TAG"
+                  else
+                    TAG="${GITHUB_REF#refs/tags/}"
+                  fi
+                  TAG="${TAG#refs/tags/}"
+                  if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$ ]]; then
+                    echo "Release tag must use vMAJOR.MINOR.PATCH: $TAG" >&2
+                    exit 1
+                  fi
+                  {
+                    echo "ref=refs/tags/$TAG"
+                    echo "tag=$TAG"
+                    echo "version=${TAG#v}"
+                  } >> "$GITHUB_OUTPUT"
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+            - name: Check for an existing release
+              id: guard
+              env:
+                  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  TAG: ${{ steps.version.outputs.tag }}
+              run: |
+                  if gh release view "$TAG" >/dev/null 2>&1; then
+                    echo "already=true" >> "$GITHUB_OUTPUT"
+                  else
+                    echo "already=false" >> "$GITHUB_OUTPUT"
+                  fi
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+            - name: Checkout release tag
+              if: ${{ steps.guard.outputs.already == 'false' }}
+              uses: actions/checkout@v5
+              with:
+                  ref: ${{ steps.version.outputs.ref }}
 
-      - name: Install build dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install build wheel setuptools
+            - name: Set up Python
+              if: ${{ steps.guard.outputs.already == 'false' }}
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.10"
 
-      - name: Build Python package
-        run: python -m build
+            - name: Build and validate release artifacts
+              if: ${{ steps.guard.outputs.already == 'false' }}
+              env:
+                  VERSION: ${{ steps.version.outputs.version }}
+              run: |
+                  python -m pip install --upgrade pip build twine pytest
+                  python tools/sync_plugin_version.py --check
+                  python -m pytest tests/test_hcli_packaging.py tests/test_plugin_manifest.py -v
+                  python -m build
+                  twine check dist/*
+                  python scripts/amalgamate.py --output dist/ida_taskr_amalgamated.py
+                  python tools/build_hcli_archive.py --output "dist/ida-taskr-${VERSION}.zip"
+                  cp "dist/ida-taskr-${VERSION}.zip" dist/ida-taskr-latest.zip
 
-      - name: Extract version from tag
-        id: get_version
-        run: |
-          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-          else
-            VERSION="dev-$(date +%Y%m%d)"
-          fi
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Version: ${VERSION}"
+            - name: Create GitHub release
+              if: ${{ steps.guard.outputs.already == 'false' && (github.event_name == 'push' || inputs.publish == true) }}
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: dist/*
+                  tag_name: ${{ steps.version.outputs.tag }}
+                  name: ${{ steps.version.outputs.tag }}
+                  generate_release_notes: true
+                  prerelease: ${{ contains(steps.version.outputs.version, '-') }}
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate amalgamated file
-        run: |
-          python scripts/amalgamate.py --output ida_taskr_amalgamated.py
-          echo "Generated ida_taskr_amalgamated.py"
-          wc -l ida_taskr_amalgamated.py
+            - name: Upload PyPI distributions
+              if: ${{ steps.guard.outputs.already == 'false' && (github.event_name == 'push' || inputs.publish == true) }}
+              uses: actions/upload-artifact@v4
+              with:
+                  name: pypi-distributions
+                  path: |
+                      dist/*.tar.gz
+                      dist/*.whl
+                  if-no-files-found: error
 
-      - name: Verify amalgamated file syntax
-        run: |
-          python -m py_compile ida_taskr_amalgamated.py
-          echo "Syntax check passed"
+    pypi-publish:
+        needs: release
+        if: ${{ needs.release.outputs.publish == 'true' && github.repository_owner == 'mahmoudimus' }}
+        runs-on: ubuntu-latest
+        permissions:
+            id-token: write
+        steps:
+            - name: Download PyPI distributions
+              uses: actions/download-artifact@v4
+              with:
+                  name: pypi-distributions
+                  path: dist
 
-      - name: Create HCLI plugin archive
-        run: |
-          mkdir -p ida-taskr-plugin/src/ida_taskr
-
-          # Copy source files
-          cp -r src/ida_taskr/* ida-taskr-plugin/src/ida_taskr/
-
-          # Copy metadata and documentation
-          cp ida-plugin.json ida-taskr-plugin/
-          cp LICENSE ida-taskr-plugin/
-          cp README.md ida-taskr-plugin/
-
-          # Include amalgamated file
-          cp ida_taskr_amalgamated.py ida-taskr-plugin/
-
-          # Create archive
-          cd ida-taskr-plugin
-          zip -r ../ida-taskr-${{ steps.get_version.outputs.version }}.zip .
-          cd ..
-
-          # Also create a latest version for convenience
-          cp ida-taskr-${{ steps.get_version.outputs.version }}.zip ida-taskr-latest.zip
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ida-taskr-release
-          path: |
-            ida-taskr-*.zip
-            ida_taskr_amalgamated.py
-            dist/
-          retention-days: 30
-
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            ida-taskr-${{ steps.get_version.outputs.version }}.zip
-            ida-taskr-latest.zip
-            ida_taskr_amalgamated.py
-            dist/*.whl
-            dist/*.tar.gz
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Publish to PyPI
-        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.dry_run == false)
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
-          skip-existing: true
+            - name: Publish to PyPI
+              uses: pypa/gh-action-pypi-publish@release/v1
+              with:
+                  packages-dir: dist/

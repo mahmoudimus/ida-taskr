@@ -1,23 +1,28 @@
 {
+  "$schema": "https://hcli.docs.hex-rays.com/schemas/ida-plugin.json",
   "IDAMetadataDescriptorVersion": 1,
   "plugin": {
     "name": "ida-taskr",
-    "entryPoint": "src/ida_taskr/__init__.py",
-    "version": "1.0.2",
+    "entryPoint": "entry_stub.py",
+    "version": "1.0.3",
     "description": "A Qt-based multiprocessing framework for IDA Pro that enables parallel computing without blocking the UI. Features simple decorator API (@cpu_task, @parallel, @shared_memory_task), process-based executors, and bidirectional worker IPC.",
     "idaVersions": ">=9.0",
     "license": "MIT",
     "urls": {
-      "repository": "https://github.com/mahmoudimus/ida-taskr"
+      "repository": "https://github.com/mahmoudimus/ida-taskr",
+      "homepage": "https://mahmoudimus.com"
     },
     "authors": [
       {
-        "name": "Mahmoud Abdelkader"
+        "name": "Mahmoud Abdelkader",
+        "email": "m{_no-spam_}@mahmoudimus.com"
       }
     ],
-    "pythonDependencies": [],
+    "pythonDependencies": [
+      "ida-taskr==1.0.3"
+    ],
     "categories": [
-      "analysis",
+      "api-scripting-and-automation",
       "collaboration-and-productivity"
     ],
     "keywords": [
